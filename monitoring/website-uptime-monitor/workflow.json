@@ -1,0 +1,501 @@
+{
+  "name": "Website Uptime Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Website Uptime Monitor\n\nChecks a website on a schedule, logs every result to Google Sheets, tracks latest status, and sends a Telegram alert only when status changes from **UP → DOWN**.\n\n**Configure before activate:**\n- Google Sheet ID\n- Telegram Chat ID\n- Website URL\n- Google Sheets + Telegram credentials",
+        "height": 340,
+        "width": 380,
+        "color": 5
+      },
+      "id": "sticky-overview",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-80, 40]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [360, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "websiteUrl",
+              "name": "websiteUrl",
+              "value": "https://example.com",
+              "type": "string"
+            },
+            {
+              "id": "googleSheetId",
+              "name": "googleSheetId",
+              "value": "YOUR_GOOGLE_SHEET_ID",
+              "type": "string"
+            },
+            {
+              "id": "telegramChatId",
+              "name": "telegramChatId",
+              "value": "YOUR_TELEGRAM_CHAT_ID",
+              "type": "string"
+            },
+            {
+              "id": "httpTimeoutMs",
+              "name": "httpTimeoutMs",
+              "value": 10000,
+              "type": "number"
+            },
+            {
+              "id": "checkedAt",
+              "name": "checkedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "checkStartedAt",
+              "name": "checkStartedAt",
+              "value": "={{ Date.now() }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-config",
+      "name": "Prepare Website Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [580, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.websiteUrl }}",
+        "options": {
+          "timeout": "={{ $json.httpTimeoutMs }}",
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-check",
+      "name": "Check Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [800, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Prepare Website Config').item.json;\nconst response = $input.item.json;\nconst responseTimeMs = Date.now() - Number(config.checkStartedAt);\nconst statusCode = Number(response.statusCode ?? response.status ?? 0);\nconst isUp = statusCode >= 200 && statusCode < 400;\n\nreturn [{\n  json: {\n    checkedAt: config.checkedAt,\n    websiteUrl: config.websiteUrl,\n    googleSheetId: config.googleSheetId,\n    telegramChatId: config.telegramChatId,\n    status: isUp ? 'UP' : 'DOWN',\n    statusCode,\n    responseTimeMs,\n    errorMessage: isUp\n      ? `HTTP ${statusCode}`\n      : `Unexpected status code: ${statusCode || 'unknown'}`,\n  },\n}];"
+      },
+      "id": "normalize-success",
+      "name": "Normalize Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Prepare Website Config').item.json;\nconst error = $input.item.json;\nconst responseTimeMs = Date.now() - Number(config.checkStartedAt);\nconst statusCode = Number(error.statusCode ?? error.httpCode ?? error.code ?? 0) || 0;\nconst rawMessage =\n  error.message ||\n  error.error?.message ||\n  error.description ||\n  error.statusMessage ||\n  'Connection or timeout error';\n\nreturn [{\n  json: {\n    checkedAt: config.checkedAt,\n    websiteUrl: config.websiteUrl,\n    googleSheetId: config.googleSheetId,\n    telegramChatId: config.telegramChatId,\n    status: 'DOWN',\n    statusCode,\n    responseTimeMs,\n    errorMessage: String(rawMessage).slice(0, 500),\n  },\n}];"
+      },
+      "id": "normalize-failure",
+      "name": "Normalize Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 420]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Checks",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "checkedAt": "={{ $json.checkedAt }}",
+            "websiteUrl": "={{ $json.websiteUrl }}",
+            "status": "={{ $json.status }}",
+            "statusCode": "={{ $json.statusCode }}",
+            "responseTimeMs": "={{ $json.responseTimeMs }}",
+            "errorMessage": "={{ $json.errorMessage }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-check",
+      "name": "Log Check",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1260, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "lookup",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Prepare Website Config').item.json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Latest Status",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "websiteUrl",
+              "lookupValue": "={{ $('Prepare Website Config').item.json.websiteUrl }}"
+            }
+          ]
+        },
+        "options": {
+          "returnAllMatches": false
+        }
+      },
+      "id": "get-latest-status",
+      "name": "Get Latest Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1480, 300],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const config = $('Prepare Website Config').item.json;\nlet current;\ntry {\n  current = $('Normalize Success').item.json;\n} catch (e) {\n  current = $('Normalize Failure').item.json;\n}\n\nconst previousItem = $input.first()?.json || {};\nconst previousStatus = String(previousItem.currentStatus || previousItem.status || '').trim();\nconst currentStatus = current.status;\nconst changedToDown = previousStatus === 'UP' && currentStatus === 'DOWN';\nconst isFirstCheck = previousStatus === '';\nconst shouldAlert = changedToDown || (isFirstCheck && currentStatus === 'DOWN');\n\nreturn [{\n  json: {\n    checkedAt: current.checkedAt,\n    websiteUrl: current.websiteUrl,\n    googleSheetId: config.googleSheetId,\n    telegramChatId: config.telegramChatId,\n    status: currentStatus,\n    statusCode: current.statusCode,\n    responseTimeMs: current.responseTimeMs,\n    errorMessage: current.errorMessage,\n    previousStatus: previousStatus || 'NONE',\n    currentStatus,\n    statusChanged: previousStatus !== '' && previousStatus !== currentStatus,\n    changedToDown: shouldAlert,\n    lastCheckedAt: current.checkedAt,\n  },\n}];"
+      },
+      "id": "detect-change",
+      "name": "Detect Status Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 300]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Latest Status",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "websiteUrl": "={{ $json.websiteUrl }}",
+            "currentStatus": "={{ $json.currentStatus }}",
+            "lastCheckedAt": "={{ $json.lastCheckedAt }}",
+            "statusCode": "={{ $json.statusCode }}"
+          },
+          "matchingColumns": ["websiteUrl"],
+          "schema": [
+            {
+              "id": "websiteUrl",
+              "displayName": "websiteUrl",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "currentStatus",
+              "displayName": "currentStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "lastCheckedAt",
+              "displayName": "lastCheckedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "statusCode",
+              "displayName": "statusCode",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-latest-status",
+      "name": "Update Latest Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1920, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "GOOGLE_SHEETS_CREDENTIAL",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "changed-to-down",
+              "leftValue": "={{ $('Detect Status Change').item.json.changedToDown }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-down",
+      "name": "Changed to DOWN?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2140, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Detect Status Change').item.json.telegramChatId }}",
+        "text": "=🚨 Website DOWN\n\nURL: {{ $('Detect Status Change').item.json.websiteUrl }}\nPrevious: {{ $('Detect Status Change').item.json.previousStatus }}\nCurrent: {{ $('Detect Status Change').item.json.currentStatus }}\nStatus code: {{ $('Detect Status Change').item.json.statusCode }}\nResponse time: {{ $('Detect Status Change').item.json.responseTimeMs }} ms\nChecked at: {{ $('Detect Status Change').item.json.checkedAt }}\nError: {{ $('Detect Status Change').item.json.errorMessage }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "telegram-alert",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2360, 200],
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Sheets\n\n**Checks** — append every result\n**Latest Status** — upsert by `websiteUrl`\n\nReplace `YOUR_GOOGLE_SHEET_ID` in Prepare Website Config.",
+        "height": 220,
+        "width": 300,
+        "color": 4
+      },
+      "id": "sticky-sheets",
+      "name": "Sheets Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1260, 40]
+    },
+    {
+      "parameters": {
+        "content": "## Alerts\n\nTelegram fires only on **UP → DOWN** (or first check = DOWN).\nNo repeat alerts while still DOWN.",
+        "height": 180,
+        "width": 280,
+        "color": 3
+      },
+      "id": "sticky-alerts",
+      "name": "Alert Notes",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [2140, 40]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Website Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Website Config": {
+      "main": [
+        [
+          {
+            "node": "Check Website",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Website": {
+      "main": [
+        [
+          {
+            "node": "Normalize Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Normalize Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Success": {
+      "main": [
+        [
+          {
+            "node": "Log Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Failure": {
+      "main": [
+        [
+          {
+            "node": "Log Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Check": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Status": {
+      "main": [
+        [
+          {
+            "node": "Detect Status Change",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Status Change": {
+      "main": [
+        [
+          {
+            "node": "Update Latest Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Latest Status": {
+      "main": [
+        [
+          {
+            "node": "Changed to DOWN?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Changed to DOWN?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": [
+    {
+      "name": "monitoring"
+    },
+    {
+      "name": "uptime"
+    }
+  ]
+}
