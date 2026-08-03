@@ -1,0 +1,995 @@
+{
+  "name": "Daily AI Job Matcher & Telegram Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -448,
+        144
+      ],
+      "id": "1f47a3ca-9835-4e0c-9579-9625e303fd4b",
+      "name": "01 - Daily Job Search Schedule"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"runId\": \"={{ 'JOB-' + $now.toFormat('yyyyMMdd-HHmmss') }}\",\n  \"searchCountry\": \"Germany\",\n  \"searchLocation\": \"Germany\",\n  \"maximumJobsPerSource\": 20,\n  \"maximumJobsForAiAnalysis\": 40,\n  \"maximumFinalJobs\": 15,\n  \"minimumMatchScore\": 60,\n  \"publishedWithin\": \"past week\",\n  \"searchTerms\": [\n    \"AI Automation Specialist\",\n    \"Automation Developer\",\n    \"n8n Developer\",\n    \"Workflow Automation Specialist\",\n    \"AI Integration Specialist\",\n    \"WordPress Developer\",\n    \"PHP Developer\",\n    \"Full Stack Developer\"\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        -240,
+        144
+      ],
+      "id": "8e277af7-bfae-41ab-bd47-d89b3cb6d9ae",
+      "name": "02 - Define Search Configuration"
+    },
+    {
+      "parameters": {
+        "actorId": {
+          "__rl": true,
+          "value": "hKByXkMQaC5Qt9UMN",
+          "mode": "list",
+          "cachedResultName": "Linkedin Jobs Scraper (curious_coder/linkedin-jobs-scraper)",
+          "cachedResultUrl": "https://console.apify.com/actors/hKByXkMQaC5Qt9UMN/input"
+        },
+        "customBody": "{\n  \"urls\": [\n    \"https://www.linkedin.com/jobs/search/?keywords=AI%20Automation%20Specialist&location=Germany&geoId=101282230&f_TPR=r604800&sortBy=DD\",\n    \"https://www.linkedin.com/jobs/search/?keywords=WordPress%20Developer&location=Germany&geoId=101282230&f_TPR=r604800&sortBy=DD\",\n    \"https://www.linkedin.com/jobs/search/?keywords=Web%20Developer&location=Germany&geoId=101282230&f_TPR=r604800&sortBy=DD\"\n  ],\n  \"scrapeCompany\": false,\n  \"count\": 20\n}",
+        "timeout": 600
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        144
+      ],
+      "id": "7ee69ae1-a9cc-4194-969f-86596e85b1bd",
+      "name": "03 - Run LinkedIn Jobs Scraper",
+      "credentials": {
+        "apifyApi": {
+          "id": "XFtglUXmmvkQv1hi",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "Datasets",
+        "datasetId": "={{ $('03 - Run LinkedIn Jobs Scraper').first().json.defaultDatasetId }}",
+        "offset": 0,
+        "limit": 100,
+        "options": {}
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        192,
+        144
+      ],
+      "id": "f9c9fb71-4566-4930-87d1-b7a172be6c9c",
+      "name": "04 - Get LinkedIn Dataset Items",
+      "credentials": {
+        "apifyApi": {
+          "id": "XFtglUXmmvkQv1hi",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sourceItems = $input.all();\n\nfunction cleanText(value) {\n  return String(value ?? '')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction extractSearchTerm(inputUrl) {\n  if (!inputUrl) return '';\n\n  try {\n    const url = new URL(inputUrl);\n    return cleanText(url.searchParams.get('keywords') ?? '');\n  } catch {\n    return '';\n  }\n}\n\nfunction createStableJobKey(job) {\n  if (job.id) {\n    return `linkedin:${String(job.id).trim()}`;\n  }\n\n  const fallback = [\n    cleanText(job.title).toLowerCase(),\n    cleanText(job.companyName).toLowerCase(),\n    cleanText(job.location).toLowerCase(),\n  ].join('|');\n\n  return `linkedin:${fallback}`;\n}\n\nreturn sourceItems\n  .map((item) => {\n    const job = item.json;\n\n    const jobUrl = cleanText(job.link);\n    const applicationUrl = cleanText(job.applyUrl) || jobUrl;\n    const description = cleanText(\n      job.descriptionText || job.descriptionHtml,\n    );\n\n    return {\n      json: {\n        jobKey: createStableJobKey(job),\n        source: 'LinkedIn',\n        sourceJobId: cleanText(job.id),\n\n        title: cleanText(job.title),\n        company: cleanText(job.companyName),\n        location: cleanText(job.location),\n\n        postedAt: cleanText(job.postedAt),\n        scrapedAt: new Date().toISOString(),\n\n        jobUrl,\n        applicationUrl,\n\n        description,\n        salary: cleanText(job.salary),\n        employmentType: cleanText(job.employmentType),\n        seniorityLevel: cleanText(job.seniorityLevel),\n        jobFunction: cleanText(job.jobFunction),\n        industries: cleanText(job.industries),\n\n        applicantsCount: cleanText(job.applicantsCount),\n        searchTerm: extractSearchTerm(job.inputUrl),\n        sourceSearchUrl: cleanText(job.inputUrl),\n\n        status: 'NEW',\n      },\n    };\n  })\n  .filter((item) => {\n    const job = item.json;\n\n    return (\n      job.sourceJobId &&\n      job.title &&\n      job.company &&\n      job.description &&\n      job.jobUrl\n    );\n  });"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        144
+      ],
+      "id": "be20b852-be7c-4390-8672-8cb4efe82f55",
+      "name": "05 - Normalize LinkedIn Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst seen = new Set();\nconst uniqueJobs = [];\n\nfor (const item of items) {\n  const job = item.json;\n\n  const duplicateKey =\n    String(job.jobKey || '').trim() ||\n    [\n      String(job.title || '').trim().toLowerCase(),\n      String(job.company || '').trim().toLowerCase(),\n      String(job.location || '').trim().toLowerCase(),\n    ].join('|');\n\n  if (!duplicateKey || seen.has(duplicateKey)) {\n    continue;\n  }\n\n  seen.add(duplicateKey);\n\n  uniqueJobs.push({\n    json: {\n      ...job,\n      duplicateKey,\n    },\n  });\n}\n\nreturn uniqueJobs;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        128
+      ],
+      "id": "f4a1d5d5-b018-4571-891b-2e6ec371c28c",
+      "name": "06 - Remove Duplicate Jobs"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg",
+          "mode": "list",
+          "cachedResultName": "Daily AI Job Matches",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Matched Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        176,
+        -80
+      ],
+      "id": "adc03c5c-9d72-4093-9d1b-70f132d4df48",
+      "name": "07 - Load Existing Jobs",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EJWIdlliX51yORiz",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const currentJobs = $('06 - Remove Duplicate Jobs').all();\nconst existingRows = $input.all();\n\nconst savedJobKeys = new Set(\n  existingRows\n    .map((item) => String(item.json.jobKey ?? '').trim())\n    .filter(Boolean),\n);\n\nreturn currentJobs\n  .filter((item) => {\n    const jobKey = String(item.json.jobKey ?? '').trim();\n    return jobKey && !savedJobKeys.has(jobKey);\n  })\n  .map((item) => ({\n    json: {\n      ...item.json,\n      isPreviouslySaved: false,\n    },\n  }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        384,
+        -80
+      ],
+      "id": "47b2e266-fc7a-4462-a6a9-7c4747ca8ad3",
+      "name": "08 - Remove Previously Saved Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const jobs = $input.all();\n\nconst positiveKeywords = [\n  'n8n',\n  'make.com', \n  'zapier',\n  'automation',\n  'workflow',\n  'ai integration',\n  'ai agent',\n  'llm',\n  'openai',\n  'prompt engineering',\n  'rest api',\n  'restful api',\n  'webhook',\n  'json',\n  'wordpress',\n  'woocommerce',\n  'php',\n  'laravel',\n  'symfony',\n  'javascript',\n  'typescript',\n  'react',\n  'next.js',\n  'node.js',\n  'full stack',\n  'fullstack',\n  'web developer',\n  'webentwickler',\n  'frontend developer',\n  'backend developer',\n  'software developer',\n  'integration',\n  'process automation',\n];\n\nconst strongNegativeKeywords = [\n  'database administrator',\n  'senior database engineer',\n  'sap fi consultant',\n  'pick-by-voice',\n  'machine learning scientist',\n  'security clearance',\n  'top-secret clearance',\n  'servicenow administrator',\n];\n\nfunction normalize(value) {\n  return String(value ?? '')\n    .toLowerCase()\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nreturn jobs\n  .map((item) => {\n    const job = item.json;\n\n    const searchableText = normalize([\n      job.title,\n      job.description,\n      job.jobFunction,\n      job.industries,\n      job.searchTerm,\n    ].join(' '));\n\n    const matchedKeywords = positiveKeywords.filter((keyword) =>\n      searchableText.includes(keyword),\n    );\n\n    const blockedKeywords = strongNegativeKeywords.filter((keyword) =>\n      searchableText.includes(keyword),\n    );\n\n    const isRelevant =\n      matchedKeywords.length >= 2 &&\n      blockedKeywords.length === 0;\n\n    return {\n      json: {\n        ...job,\n        prefilterMatchedKeywords: matchedKeywords,\n        prefilterBlockedKeywords: blockedKeywords,\n        prefilterScore: matchedKeywords.length,\n        isRelevant,\n      },\n    };\n  })\n  .filter((item) => item.json.isRelevant);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -80
+      ],
+      "id": "05857a10-0832-481f-b45d-817e4c40b50d",
+      "name": "09 - Filter Relevant Jobs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const candidateProfile = {\n  name: 'Md Mamunuzzaman',\n\n  targetRoles: [\n    'AI Automation Specialist',\n    'Automation Developer',\n    'n8n Developer',\n    'Workflow Automation Specialist',\n    'AI Integration Specialist',\n    'WordPress Developer',\n    'PHP Developer',\n    'Full Stack Developer',\n    'Web Developer',\n    'Technical Automation Consultant',\n  ],\n\n  coreSkills: [\n    'n8n',\n    'Make.com',\n    'Workflow Automation',\n    'Business Process Automation',\n    'OpenAI',\n    'LLM Integrations',\n    'Prompt Engineering',\n    'AI-Assisted Development',\n    'REST APIs',\n    'Webhooks',\n    'JSON',\n    'JavaScript',\n    'TypeScript',\n    'PHP',\n    'WordPress',\n    'WooCommerce',\n    'React',\n    'Next.js',\n    'Flutter',\n    'SQL',\n    'MySQL',\n    'PostgreSQL',\n    'Supabase',\n    'Docker',\n    'Git',\n    'GitHub',\n    'Google Sheets',\n    'Google Docs',\n    'Google Drive',\n    'Gmail',\n    'Tally Forms',\n    'HTML',\n    'CSS',\n    'Core Web Vitals',\n  ],\n\n  secondarySkills: [\n    'Node.js',\n    'Tailwind CSS',\n    'Figma',\n    'Adobe Creative Cloud',\n    'Docker Compose',\n    'Linux',\n    'CI/CD',\n    'Google Workspace',\n    'Microsoft 365',\n    'Web Application Development',\n    'API Integration',\n    'Technical Documentation',\n  ],\n\n  languages: {\n    English: 'C1',\n    German: 'B1-B2',\n  },\n\n  experience: {\n    years: 8,\n    summary:\n      'More than 8 years of professional experience in Germany with web development, WordPress, PHP, JavaScript, REST APIs, system integrations, workflow automation, AI-assisted development and digital product implementation.',\n  },\n\n  locationPreferences: {\n    homeLocation: 'Bremen, Germany',\n    acceptedLocations: [\n      'Bremen',\n      'Hamburg',\n      'Germany',\n      'Remote within Germany',\n      'Hybrid within Germany',\n    ],\n    remotePreferred: true,\n    hybridAccepted: true,\n    relocationPossible: true,\n  },\n\n  employmentPreferences: [\n    'Full-time',\n    'Part-time',\n    'Freelance',\n    'Contract',\n  ],\n\n  importantConstraints: [\n    'German language level is B1-B2, not C1 or native.',\n    'Roles requiring mandatory native German or C1 German should receive a lower score.',\n    'Roles requiring deep Java, SAP, ServiceNow, Azure SQL, machine learning research or security clearance should receive a lower score unless those skills are optional.',\n    'Remote and hybrid roles should receive a preference bonus.',\n    'Roles involving n8n, automation, APIs, webhooks, WordPress, PHP, React, TypeScript or AI integrations should receive a strong preference.',\n  ],\n};\n\nconst items = $input.all();\n\nreturn items.map((item) => {\n  const job = item.json;\n\n  const result = Object.assign({}, job, {\n    candidateProfile,\n  });\n\n  return {\n    json: result,\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -80
+      ],
+      "id": "276c51ac-e720-4906-9a4a-57d707adbe5a",
+      "name": "11 - Prepare Candidate Profile"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const job = $json;\nconst profile = job.candidateProfile;\n\nconst jobDescription = String(job.description ?? '').slice(0, 12000);\n\nconst systemPrompt = `\nYou are a professional technical recruiter and job-fit analyst.\n\nYour task is to compare one job advertisement with one candidate profile.\n\nBe realistic and conservative.\nDo not invent candidate experience.\nDo not give a high score only because generic technologies overlap.\nMandatory requirements, language requirements, role seniority, location and employment model must affect the score.\n\nReturn only valid JSON.\nDo not include Markdown, comments or explanatory text outside the JSON.\n`;\n\nconst userPrompt = `\nAnalyse the following job against the candidate profile.\n\nSCORING MODEL\n\n1. Technical skills match: 0-40\n2. Role and responsibility relevance: 0-20\n3. Experience and seniority match: 0-15\n4. Language match: 0-10\n5. Location and work-model match: 0-10\n6. Employment-type match: 0-5\n\nMaximum total: 100.\n\nIMPORTANT RULES\n\n- German C1, fluent German or native German is not fully matched by candidate German B1-B2.\n- Mandatory technologies the candidate does not have must reduce the score.\n- Optional or nice-to-have requirements should have less influence.\n- Deep Java, SAP, ServiceNow, Azure SQL, ML research and security-clearance roles should score lower unless peripheral.\n- n8n, Make.com, workflow automation, APIs, webhooks, WordPress, PHP, React, TypeScript and AI integration are strong candidate matches.\n- Remote or hybrid roles in Germany are preferred.\n- Do not reject a role only because the exact title differs.\n- Recommendation must be one of:\n  \"STRONG_MATCH\", \"GOOD_MATCH\", \"POSSIBLE_MATCH\", \"SKIP\"\n- Application priority must be one of:\n  \"HIGH\", \"MEDIUM\", \"LOW\", \"NONE\"\n\nCANDIDATE PROFILE\n\n${JSON.stringify(profile, null, 2)}\n\nJOB\n\n${JSON.stringify(\n  {\n    jobKey: job.jobKey,\n    title: job.title,\n    company: job.company,\n    location: job.location,\n    employmentType: job.employmentType,\n    seniorityLevel: job.seniorityLevel,\n    salary: job.salary,\n    postedAt: job.postedAt,\n    description: jobDescription,\n  },\n  null,\n  2,\n)}\n\nRETURN THIS EXACT JSON STRUCTURE\n\n{\n  \"jobKey\": \"${job.jobKey}\",\n  \"technicalSkillsScore\": 0,\n  \"roleRelevanceScore\": 0,\n  \"experienceScore\": 0,\n  \"languageScore\": 0,\n  \"locationScore\": 0,\n  \"employmentScore\": 0,\n  \"matchScore\": 0,\n  \"recommendation\": \"STRONG_MATCH\",\n  \"applicationPriority\": \"HIGH\",\n  \"matchingSkills\": [],\n  \"missingRequiredSkills\": [],\n  \"missingOptionalSkills\": [],\n  \"languageAssessment\": \"\",\n  \"locationAssessment\": \"\",\n  \"mainStrengths\": [],\n  \"mainRisks\": [],\n  \"summary\": \"\"\n}\n`;\n\nreturn {\n  json: {\n    ...job,\n    aiRequest: {\n      systemPrompt: systemPrompt.trim(),\n      userPrompt: userPrompt.trim(),\n    },\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1328,
+        -80
+      ],
+      "id": "1a354e28-b01e-41c8-b000-914e2c802006",
+      "name": "12 - Build AI Match Prompt"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "=system",
+              "content": "={{ $json.aiRequest.systemPrompt }}"
+            },
+            {
+              "content": "={{ $json.aiRequest.userPrompt }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "verbosity": "low",
+              "name": "job_match_analysis",
+              "schema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"jobKey\": {\n      \"type\": \"string\"\n    },\n    \"technicalSkillsScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 40\n    },\n    \"roleRelevanceScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 20\n    },\n    \"experienceScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 15\n    },\n    \"languageScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 10\n    },\n    \"locationScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 10\n    },\n    \"employmentScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 5\n    },\n    \"matchScore\": {\n      \"type\": \"integer\",\n      \"minimum\": 0,\n      \"maximum\": 100\n    },\n    \"recommendation\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"STRONG_MATCH\",\n        \"GOOD_MATCH\",\n        \"POSSIBLE_MATCH\",\n        \"SKIP\"\n      ]\n    },\n    \"applicationPriority\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"HIGH\",\n        \"MEDIUM\",\n        \"LOW\",\n        \"NONE\"\n      ]\n    },\n    \"matchingSkills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"missingRequiredSkills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"missingOptionalSkills\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"languageAssessment\": {\n      \"type\": \"string\"\n    },\n    \"locationAssessment\": {\n      \"type\": \"string\"\n    },\n    \"mainStrengths\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"mainRisks\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\"\n      }\n    },\n    \"summary\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"jobKey\",\n    \"technicalSkillsScore\",\n    \"roleRelevanceScore\",\n    \"experienceScore\",\n    \"languageScore\",\n    \"locationScore\",\n    \"employmentScore\",\n    \"matchScore\",\n    \"recommendation\",\n    \"applicationPriority\",\n    \"matchingSkills\",\n    \"missingRequiredSkills\",\n    \"missingOptionalSkills\",\n    \"languageAssessment\",\n    \"locationAssessment\",\n    \"mainStrengths\",\n    \"mainRisks\",\n    \"summary\"\n  ],\n  \"additionalProperties\": false\n}",
+              "description": "Structured candidate-to-job match analysis with scoring, recommendation, strengths and risks.",
+              "strict": true
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -448,
+        1120
+      ],
+      "id": "6ec2f88f-cf96-4691-9628-5a4cc2f274c1",
+      "name": "13 - OpenAI Job Match Analysis",
+      "credentials": {
+        "openAiApi": {
+          "id": "0DWyIqgroTQzbTqI",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const openAiResponse = $input.item.json;\n\nconst originalJob =\n  $('12 - Build AI Match Prompt').item.json;\n\nconst aiResult =\n  openAiResponse.output?.[0]?.content?.[0]?.text ?? null;\n\nif (\n  !aiResult ||\n  typeof aiResult !== 'object' ||\n  Array.isArray(aiResult)\n) {\n  throw new Error(\n    `AI match result is missing or invalid for ${\n      originalJob.jobKey ?? 'unknown job'\n    }`,\n  );\n}\n\nconst technicalSkillsScore = Number(\n  aiResult.technicalSkillsScore ?? 0,\n);\n\nconst roleRelevanceScore = Number(\n  aiResult.roleRelevanceScore ?? 0,\n);\n\nconst experienceScore = Number(\n  aiResult.experienceScore ?? 0,\n);\n\nconst languageScore = Number(\n  aiResult.languageScore ?? 0,\n);\n\nconst locationScore = Number(\n  aiResult.locationScore ?? 0,\n);\n\nconst employmentScore = Number(\n  aiResult.employmentScore ?? 0,\n);\n\nconst calculatedScore =\n  technicalSkillsScore +\n  roleRelevanceScore +\n  experienceScore +\n  languageScore +\n  locationScore +\n  employmentScore;\n\nconst parsedResult = Object.assign({}, originalJob, {\n  technicalSkillsScore,\n  roleRelevanceScore,\n  experienceScore,\n  languageScore,\n  locationScore,\n  employmentScore,\n\n  aiMatchScore: Number(\n    aiResult.matchScore ?? calculatedScore,\n  ),\n\n  calculatedMatchScore: calculatedScore,\n\n  recommendation: String(\n    aiResult.recommendation ?? 'SKIP',\n  ),\n\n  applicationPriority: String(\n    aiResult.applicationPriority ?? 'NONE',\n  ),\n\n  matchingSkills: Array.isArray(aiResult.matchingSkills)\n    ? aiResult.matchingSkills\n    : [],\n\n  missingRequiredSkills: Array.isArray(\n    aiResult.missingRequiredSkills,\n  )\n    ? aiResult.missingRequiredSkills\n    : [],\n\n  missingOptionalSkills: Array.isArray(\n    aiResult.missingOptionalSkills,\n  )\n    ? aiResult.missingOptionalSkills\n    : [],\n\n  languageAssessment: String(\n    aiResult.languageAssessment ?? '',\n  ),\n\n  locationAssessment: String(\n    aiResult.locationAssessment ?? '',\n  ),\n\n  mainStrengths: Array.isArray(aiResult.mainStrengths)\n    ? aiResult.mainStrengths\n    : [],\n\n  mainRisks: Array.isArray(aiResult.mainRisks)\n    ? aiResult.mainRisks\n    : [],\n\n  summary: String(aiResult.summary ?? ''),\n\n  aiAnalysedAt: new Date().toISOString(),\n});\n\nreturn {\n  json: parsedResult,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        1120
+      ],
+      "id": "bec6a08b-1171-4099-a055-305bb47ca0b2",
+      "name": "14 - Parse AI Match Result"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $input.item.json;\n\nconst allowedRecommendations = new Set([\n  'STRONG_MATCH',\n  'GOOD_MATCH',\n  'POSSIBLE_MATCH',\n  'SKIP',\n]);\n\nconst allowedPriorities = new Set([\n  'HIGH',\n  'MEDIUM',\n  'LOW',\n  'NONE',\n]);\n\nfunction clamp(value, min, max) {\n  const number = Number(value);\n\n  if (!Number.isFinite(number)) {\n    return min;\n  }\n\n  return Math.min(\n    max,\n    Math.max(min, Math.round(number)),\n  );\n}\n\nconst technicalSkillsScore = clamp(\n  input.technicalSkillsScore,\n  0,\n  40,\n);\n\nconst roleRelevanceScore = clamp(\n  input.roleRelevanceScore,\n  0,\n  20,\n);\n\nconst experienceScore = clamp(\n  input.experienceScore,\n  0,\n  15,\n);\n\nconst languageScore = clamp(\n  input.languageScore,\n  0,\n  10,\n);\n\nconst locationScore = clamp(\n  input.locationScore,\n  0,\n  10,\n);\n\nconst employmentScore = clamp(\n  input.employmentScore,\n  0,\n  5,\n);\n\nconst validatedMatchScore =\n  technicalSkillsScore +\n  roleRelevanceScore +\n  experienceScore +\n  languageScore +\n  locationScore +\n  employmentScore;\n\nconst recommendationValue = String(\n  input.recommendation ?? '',\n);\n\nconst recommendation =\n  allowedRecommendations.has(recommendationValue)\n    ? recommendationValue\n    : 'SKIP';\n\nconst priorityValue = String(\n  input.applicationPriority ?? '',\n);\n\nconst applicationPriority =\n  allowedPriorities.has(priorityValue)\n    ? priorityValue\n    : 'NONE';\n\nconst validatedResult = Object.assign({}, input, {\n  technicalSkillsScore,\n  roleRelevanceScore,\n  experienceScore,\n  languageScore,\n  locationScore,\n  employmentScore,\n\n  matchScore: validatedMatchScore,\n  recommendation,\n  applicationPriority,\n\n  scoreValidationPassed:\n    Number(input.aiMatchScore) === validatedMatchScore,\n\n  matchingSkills: Array.isArray(input.matchingSkills)\n    ? input.matchingSkills\n    : [],\n\n  missingRequiredSkills: Array.isArray(\n    input.missingRequiredSkills,\n  )\n    ? input.missingRequiredSkills\n    : [],\n\n  missingOptionalSkills: Array.isArray(\n    input.missingOptionalSkills,\n  )\n    ? input.missingOptionalSkills\n    : [],\n\n  mainStrengths: Array.isArray(input.mainStrengths)\n    ? input.mainStrengths\n    : [],\n\n  mainRisks: Array.isArray(input.mainRisks)\n    ? input.mainRisks\n    : [],\n\n  validationStatus: 'VALID',\n});\n\nreturn {\n  json: validatedResult,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        1120
+      ],
+      "id": "149154d4-ae36-49e8-84ea-87ecf865a9ce",
+      "name": "15 - Validate Match Result"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $input.item.json;\n\nconst searchConfig =\n  $('02 - Define Search Configuration')\n    .first()\n    .json;\n\nconst minimumMatchScore =\n  Number(searchConfig.minimumMatchScore) || 60;\n\nconst baseScore = Number(input.matchScore ?? 0);\n\nlet preferenceAdjustment = 0;\n\nconst searchableText = [\n  input.title,\n  input.description,\n  input.locationAssessment,\n]\n  .filter(Boolean)\n  .join(' ')\n  .toLowerCase();\n\n// Remote or home-office preference bonus\nif (\n  searchableText.includes('remote') ||\n  searchableText.includes('home office') ||\n  searchableText.includes('homeoffice')\n) {\n  preferenceAdjustment += 2;\n}\n\n// Automation and AI preference bonus\nif (\n  searchableText.includes('n8n') ||\n  searchableText.includes('workflow automation') ||\n  searchableText.includes('ai integration') ||\n  searchableText.includes('llm')\n) {\n  preferenceAdjustment += 3;\n}\n\n// WordPress and WooCommerce preference bonus\nif (\n  searchableText.includes('wordpress') ||\n  searchableText.includes('woocommerce')\n) {\n  preferenceAdjustment += 2;\n}\n\n// Language penalty for requirements above candidate level\nif (\n  searchableText.includes('german c1') ||\n  searchableText.includes('deutsch c1') ||\n  searchableText.includes('native german') ||\n  searchableText.includes('muttersprache deutsch')\n) {\n  preferenceAdjustment -= 5;\n}\n\nconst finalMatchScore = Math.max(\n  0,\n  Math.min(100, baseScore + preferenceAdjustment),\n);\n\nlet scoreBand = 'LOW';\n\nif (finalMatchScore >= 85) {\n  scoreBand = 'EXCELLENT';\n} else if (finalMatchScore >= 75) {\n  scoreBand = 'STRONG';\n} else if (finalMatchScore >= 60) {\n  scoreBand = 'RELEVANT';\n}\n\nconst result = Object.assign({}, input, {\n  baseMatchScore: baseScore,\n  preferenceAdjustment,\n  finalMatchScore,\n  scoreBand,\n  meetsMinimumScore:\n    finalMatchScore >= minimumMatchScore,\n  minimumRequiredScore: minimumMatchScore,\n});\n\nreturn {\n  json: result,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        1120
+      ],
+      "id": "f8f8bd9f-ac52-416f-97e4-e822f1df7206",
+      "name": "16 - Calculate Final Match Score"
+    },
+    {
+      "parameters": {
+        "jsCode": "const priorityWeight = {\n  HIGH: 3,\n  MEDIUM: 2,\n  LOW: 1,\n  NONE: 0,\n};\n\nconst recommendationWeight = {\n  STRONG_MATCH: 4,\n  GOOD_MATCH: 3,\n  POSSIBLE_MATCH: 2,\n  SKIP: 1,\n};\n\nconst items = $input.all();\n\nconst eligibleJobs = items.filter((item) => {\n  return item.json.meetsMinimumScore === true;\n});\n\neligibleJobs.sort((a, b) => {\n  const jobA = a.json;\n  const jobB = b.json;\n\n  const scoreDifference =\n    Number(jobB.finalMatchScore ?? 0) -\n    Number(jobA.finalMatchScore ?? 0);\n\n  if (scoreDifference !== 0) {\n    return scoreDifference;\n  }\n\n  const priorityDifference =\n    Number(priorityWeight[jobB.applicationPriority] ?? 0) -\n    Number(priorityWeight[jobA.applicationPriority] ?? 0);\n\n  if (priorityDifference !== 0) {\n    return priorityDifference;\n  }\n\n  const recommendationDifference =\n    Number(recommendationWeight[jobB.recommendation] ?? 0) -\n    Number(recommendationWeight[jobA.recommendation] ?? 0);\n\n  if (recommendationDifference !== 0) {\n    return recommendationDifference;\n  }\n\n  const dateA = Date.parse(jobA.postedAt ?? '') || 0;\n  const dateB = Date.parse(jobB.postedAt ?? '') || 0;\n\n  return dateB - dateA;\n});\n\nreturn eligibleJobs.map((item, index) => {\n  const rankedJob = Object.assign({}, item.json, {\n    rankingPosition: index + 1,\n  });\n\n  return {\n    json: rankedJob,\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        1120
+      ],
+      "id": "290818ff-42e9-4ac5-b9b3-3d11fe7e48e7",
+      "name": "17 - Sort Jobs by Match Score"
+    },
+    {
+      "parameters": {
+        "jsCode": "const searchConfig =\n  $('02 - Define Search Configuration')\n    .first()\n    .json;\n\nconst maximumFinalJobs =\n  Number(searchConfig.maximumFinalJobs) || 15;\n\nconst selectedAt = new Date().toISOString();\n\nconst items = $input\n  .all()\n  .slice(0, maximumFinalJobs);\n\nreturn items.map((item, index) => {\n  const selectedJob = Object.assign({}, item.json, {\n    rankingPosition: index + 1,\n    selectedForFinalList: true,\n    selectedAt,\n  });\n\n  return {\n    json: selectedJob,\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        1120
+      ],
+      "id": "25007d99-071e-4aae-8e5f-e3e095668881",
+      "name": "18 - Select Top 15 Jobs"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $input.item.json;\n\nfunction joinList(value) {\n  return Array.isArray(value)\n    ? value.filter(Boolean).join(', ')\n    : '';\n}\n\nconst missingRequiredSkills = Array.isArray(\n  input.missingRequiredSkills,\n)\n  ? input.missingRequiredSkills\n  : [];\n\nconst missingOptionalSkills = Array.isArray(\n  input.missingOptionalSkills,\n)\n  ? input.missingOptionalSkills\n  : [];\n\nconst missingSkills = missingRequiredSkills.concat(\n  missingOptionalSkills,\n);\n\nreturn {\n  json: {\n    jobKey: String(input.jobKey ?? ''),\n    foundAt: String(\n      input.selectedAt ?? new Date().toISOString(),\n    ),\n\n    source: String(input.source ?? ''),\n    sourceJobId: String(input.sourceJobId ?? ''),\n\n    title: String(input.title ?? ''),\n    company: String(input.company ?? ''),\n    location: String(input.location ?? ''),\n\n    postedAt: String(input.postedAt ?? ''),\n    employmentType: String(input.employmentType ?? ''),\n    seniorityLevel: String(input.seniorityLevel ?? ''),\n    salary: String(input.salary ?? ''),\n\n    matchScore: Number(input.finalMatchScore ?? 0),\n    recommendation: String(input.recommendation ?? ''),\n    applicationPriority: String(\n      input.applicationPriority ?? '',\n    ),\n\n    matchingSkills: joinList(input.matchingSkills),\n    missingSkills: joinList(missingSkills),\n\n    summary: String(input.summary ?? ''),\n\n    jobUrl: String(input.jobUrl ?? ''),\n    applicationUrl: String(\n      input.applicationUrl || input.jobUrl || '',\n    ),\n\n    searchTerm: String(input.searchTerm ?? ''),\n    status: 'NEW',\n\n    appliedAt: '',\n    notes: '',\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        864
+      ],
+      "id": "77475abb-10e0-49f5-930c-e5bd21d13797",
+      "name": "19 - Prepare Google Sheet Rows"
+    },
+    {
+      "parameters": {
+        "maxItems": 40
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        864,
+        -80
+      ],
+      "id": "5042d030-3adb-4b29-b0a1-ac183bab84b3",
+      "name": "10 - Limit AI Analysis Batch"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg",
+          "mode": "list",
+          "cachedResultName": "Daily AI Job Matches",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Matched Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "jobKey",
+              "displayName": "jobKey",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "foundAt",
+              "displayName": "foundAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sourceJobId",
+              "displayName": "sourceJobId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "company",
+              "displayName": "company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "postedAt",
+              "displayName": "postedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "employmentType",
+              "displayName": "employmentType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "seniorityLevel",
+              "displayName": "seniorityLevel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "salary",
+              "displayName": "salary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "matchScore",
+              "displayName": "matchScore",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recommendation",
+              "displayName": "recommendation",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "matchingSkills",
+              "displayName": "matchingSkills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "missingSkills",
+              "displayName": "missingSkills",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "jobUrl",
+              "displayName": "jobUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "applicationUrl",
+              "displayName": "applicationUrl",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "searchTerm",
+              "displayName": "searchTerm",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "appliedAt",
+              "displayName": "appliedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1088,
+        864
+      ],
+      "id": "660be93b-92c8-48bc-9515-6d34718b868f",
+      "name": "20 - Save Matched Jobs",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "EJWIdlliX51yORiz",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfunction getCleanJobUrl(job) {\n  if (\n    job.source === 'LinkedIn' &&\n    job.sourceJobId\n  ) {\n    return `https://www.linkedin.com/jobs/view/${job.sourceJobId}`;\n  }\n\n  return String(\n    job.applicationUrl || job.jobUrl || '',\n  );\n}\n\nconst jobs = items\n  .map((item) => item.json)\n  .sort(\n    (a, b) =>\n      Number(b.matchScore ?? 0) -\n      Number(a.matchScore ?? 0),\n  );\n\nconst date = new Intl.DateTimeFormat('de-DE', {\n  dateStyle: 'medium',\n  timeZone: 'Europe/Berlin',\n}).format(new Date());\n\nconst lines = jobs.map((job, index) => {\n  const score = Number(job.matchScore ?? 0);\n  const title = String(job.title ?? 'Unknown role');\n  const company = String(job.company ?? 'Unknown company');\n  const location = String(job.location ?? '');\n  const priority = String(\n    job.applicationPriority ?? '',\n  );\n  const url = getCleanJobUrl(job);\n\n  return [\n    `${index + 1}. ${score}% — ${title}`,\n    `🏢 ${company}`,\n    location ? `📍 ${location}` : '',\n    priority ? `🎯 Priority: ${priority}` : '',\n    url ? `🔗 ${url}` : '',\n  ]\n    .filter(Boolean)\n    .join('\\n');\n});\n\nconst telegramMessage = [\n  `🤖 Daily AI Job Matches`,\n  `📅 ${date}`,\n  '',\n  `Found ${jobs.length} new matching jobs.`,\n  '',\n  lines.join('\\n\\n'),\n  '',\n  `✅ Full details saved in Google Sheets.`,\n].join('\\n');\n\nreturn [\n  {\n    json: {\n      telegramMessage,\n      matchedJobCount: jobs.length,\n      generatedAt: new Date().toISOString(),\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        864
+      ],
+      "id": "04e9b8e1-a5f4-4caa-a701-7b9c1baf6fd7",
+      "name": "21 - Build Telegram Summary"
+    },
+    {
+      "parameters": {
+        "chatId": "497451775",
+        "text": "={{ $json.telegramMessage }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        864
+      ],
+      "id": "f6671a0e-4d67-4120-803a-da25f8a288e1",
+      "name": "22 - Send Telegram Job Alert",
+      "webhookId": "e21cb24d-a9fe-4b3c-9da7-48d3c68f1880",
+      "credentials": {
+        "telegramApi": {
+          "id": "T2dxsLOKEz3Ty1xY",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "actorId": {
+          "__rl": true,
+          "value": "gj3aMAOzl6dC6bpzP",
+          "mode": "list",
+          "cachedResultName": "Stepstone Jobs Scraper (Germany) (valig/stepstone-jobs-scraper)",
+          "cachedResultUrl": "https://console.apify.com/actors/gj3aMAOzl6dC6bpzP/input"
+        },
+        "customBody": "{\n  \"ag\": \"age_7\",\n  \"keywords\": \"WordPress Developer\",\n  \"limit\": 10,\n  \"location\": \"Germany\",\n  \"radius\": \"10\",\n  \"sort\": \"2\"\n}",
+        "timeout": 600
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        608
+      ],
+      "id": "dad80e46-21ff-4c33-97c0-82b5aaac85d4",
+      "name": "03B - Run StepStone Jobs Scraper",
+      "credentials": {
+        "apifyApi": {
+          "id": "XFtglUXmmvkQv1hi",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "Datasets",
+        "datasetId": "={{ $('03B - Run StepStone Jobs Scraper').first().json.defaultDatasetId }}",
+        "offset": 0,
+        "limit": 100,
+        "options": {}
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [
+        192,
+        608
+      ],
+      "id": "fa87a316-e535-42b5-ba85-083b076157da",
+      "name": "04B - Get StepStone Dataset Items",
+      "credentials": {
+        "apifyApi": {
+          "id": "XFtglUXmmvkQv1hi",
+          "name": "Apify account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfunction decodeHtml(value) {\n  return String(value ?? '')\n    .replace(/<br\\s*\\/?>/gi, '\\n')\n    .replace(/<\\/p>/gi, '\\n')\n    .replace(/<\\/li>/gi, '\\n')\n    .replace(/<[^>]+>/g, ' ')\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#39;/gi, \"'\")\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\nfunction buildDescription(job) {\n  const sections = Array.isArray(job.textSections)\n    ? job.textSections\n    : [];\n\n  const sectionText = sections\n    .map((section) => {\n      const title = decodeHtml(section.title);\n      const content = decodeHtml(section.content);\n\n      return [title, content]\n        .filter(Boolean)\n        .join(': ');\n    })\n    .filter(Boolean)\n    .join(' ');\n\n  return sectionText || decodeHtml(job.textSnippet);\n}\n\nfunction formatSalary(salary) {\n  if (!salary || typeof salary !== 'object') {\n    return '';\n  }\n\n  const currency = String(\n    salary.currency ?? salary.currencyIso ?? '',\n  ).trim();\n\n  const min = Number(salary.min);\n  const max = Number(salary.max);\n  const period = String(salary.period ?? '').trim();\n\n  if (Number.isFinite(min) && Number.isFinite(max)) {\n    return `${currency}${min.toLocaleString('de-DE')} - ${currency}${max.toLocaleString('de-DE')} per ${period}`;\n  }\n\n  if (Number.isFinite(min)) {\n    return `From ${currency}${min.toLocaleString('de-DE')} per ${period}`;\n  }\n\n  if (Number.isFinite(max)) {\n    return `Up to ${currency}${max.toLocaleString('de-DE')} per ${period}`;\n  }\n\n  return '';\n}\n\nfunction mapWorkMode(value) {\n  const mode = String(value ?? '').trim();\n\n  if (mode === '2') {\n    return 'Remote/Hybrid';\n  }\n\n  if (mode === '1') {\n    return 'Hybrid';\n  }\n\n  if (mode === '0') {\n    return 'On-site';\n  }\n\n  return '';\n}\n\nreturn items\n  .map((item) => {\n    const job = item.json;\n\n    const sourceJobId = String(job.id ?? '').trim();\n    const jobUrl = String(job.url ?? '').trim();\n\n    const company =\n      typeof job.company === 'object'\n        ? String(job.company.name ?? '').trim()\n        : String(job.company ?? '').trim();\n\n    const location =\n      typeof job.location === 'object'\n        ? String(job.location.location ?? '').trim()\n        : String(job.location ?? '').trim();\n\n    const description = buildDescription(job);\n\n    const normalizedJob = {\n      jobKey: sourceJobId\n        ? `stepstone:${sourceJobId}`\n        : `stepstone:${jobUrl}`,\n\n      source: 'StepStone',\n      sourceJobId,\n\n      title: String(job.title ?? '').trim(),\n      company,\n      location,\n\n      postedAt: String(job.datePosted ?? '').trim(),\n      scrapedAt: new Date().toISOString(),\n\n      jobUrl,\n      applicationUrl: jobUrl,\n\n      description,\n      salary: formatSalary(job.salary),\n\n      employmentType: '',\n      seniorityLevel: '',\n      jobFunction: '',\n      industries: '',\n\n      workMode: mapWorkMode(job.workFromHome),\n      jobLanguage: String(job.offerLanguage ?? '').trim(),\n\n      applicantsCount: '',\n      searchTerm: 'WordPress Developer',\n      sourceSearchUrl: '',\n\n      status: 'NEW',\n    };\n\n    return {\n      json: normalizedJob,\n    };\n  })\n  .filter((item) => {\n    const job = item.json;\n\n    return (\n      job.sourceJobId &&\n      job.title &&\n      job.company &&\n      job.description &&\n      job.jobUrl\n    );\n  });"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        608
+      ],
+      "id": "0f94961c-f138-4b46-ba51-bbb887dcd5d1",
+      "name": "05B - Normalize StepStone Jobs"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        704,
+        416
+      ],
+      "id": "e6041dcd-fd0c-4210-946d-7d5ab2a7021c",
+      "name": "05C - Merge Job Sources"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "01 - Daily Job Search Schedule": {
+      "main": [
+        [
+          {
+            "node": "02 - Define Search Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 - Define Search Configuration": {
+      "main": [
+        [
+          {
+            "node": "03 - Run LinkedIn Jobs Scraper",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "03B - Run StepStone Jobs Scraper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 - Run LinkedIn Jobs Scraper": {
+      "main": [
+        [
+          {
+            "node": "04 - Get LinkedIn Dataset Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 - Get LinkedIn Dataset Items": {
+      "main": [
+        [
+          {
+            "node": "05 - Normalize LinkedIn Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 - Normalize LinkedIn Jobs": {
+      "main": [
+        [
+          {
+            "node": "05C - Merge Job Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "06 - Remove Duplicate Jobs": {
+      "main": [
+        [
+          {
+            "node": "07 - Load Existing Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 - Load Existing Jobs": {
+      "main": [
+        [
+          {
+            "node": "08 - Remove Previously Saved Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 - Remove Previously Saved Jobs": {
+      "main": [
+        [
+          {
+            "node": "09 - Filter Relevant Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09 - Filter Relevant Jobs": {
+      "main": [
+        [
+          {
+            "node": "10 - Limit AI Analysis Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 - Prepare Candidate Profile": {
+      "main": [
+        [
+          {
+            "node": "12 - Build AI Match Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 - Build AI Match Prompt": {
+      "main": [
+        [
+          {
+            "node": "13 - OpenAI Job Match Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 - OpenAI Job Match Analysis": {
+      "main": [
+        [
+          {
+            "node": "14 - Parse AI Match Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 - Parse AI Match Result": {
+      "main": [
+        [
+          {
+            "node": "15 - Validate Match Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15 - Validate Match Result": {
+      "main": [
+        [
+          {
+            "node": "16 - Calculate Final Match Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 - Calculate Final Match Score": {
+      "main": [
+        [
+          {
+            "node": "17 - Sort Jobs by Match Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17 - Sort Jobs by Match Score": {
+      "main": [
+        [
+          {
+            "node": "18 - Select Top 15 Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "18 - Select Top 15 Jobs": {
+      "main": [
+        [
+          {
+            "node": "19 - Prepare Google Sheet Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 - Limit AI Analysis Batch": {
+      "main": [
+        [
+          {
+            "node": "11 - Prepare Candidate Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "19 - Prepare Google Sheet Rows": {
+      "main": [
+        [
+          {
+            "node": "20 - Save Matched Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "20 - Save Matched Jobs": {
+      "main": [
+        [
+          {
+            "node": "21 - Build Telegram Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "21 - Build Telegram Summary": {
+      "main": [
+        [
+          {
+            "node": "22 - Send Telegram Job Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03B - Run StepStone Jobs Scraper": {
+      "main": [
+        [
+          {
+            "node": "04B - Get StepStone Dataset Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04B - Get StepStone Dataset Items": {
+      "main": [
+        [
+          {
+            "node": "05B - Normalize StepStone Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05B - Normalize StepStone Jobs": {
+      "main": [
+        [
+          {
+            "node": "05C - Merge Job Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05C - Merge Job Sources": {
+      "main": [
+        [
+          {
+            "node": "06 - Remove Duplicate Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f510f671-e4b9-485b-9ffb-0ced318ac5fe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "05817f9eca7eaf8516ca99675ef8af4a8a52a1f9d8d8d6d1a6a8aafe73b54398"
+  },
+  "nodeGroups": [],
+  "id": "gV9AAtYIrLcS6hlU",
+  "tags": []
+}
