@@ -167,6 +167,10 @@ workflow/ai-job-application-tracker.json
 
 Then configure all credentials and placeholders before executing.
 
+## Workflow Overview
+
+![AI Job Application Tracker workflow](screenshots/workflow-overview.png)
+
 ## Security
 
 The public workflow contains no API keys, OAuth tokens, Telegram chat IDs, Google Sheet IDs, webhook IDs, or n8n instance identifiers.
