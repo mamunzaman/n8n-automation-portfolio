@@ -2,9 +2,15 @@
 
 A collection of production-oriented business automation workflows built with n8n.
 
-These projects demonstrate workflow architecture, API integration, data validation, error handling, logging, AI-assisted processing, document generation, notification systems, and Google Workspace automation.
+These projects demonstrate workflow architecture, API integration, data validation, error handling, logging, AI-assisted processing, document generation, notification systems, multilingual routing, and Google Workspace automation.
 
 ## Featured Automations
+
+### Candidate Application Automation
+
+A two-stage multilingual recruiting workflow that captures candidate interest, prevents duplicate registrations, creates unique candidate IDs, collects detailed application data, generates structured candidate profiles, exports them as PDFs, stores files in Google Drive, and sends candidate and HR notifications in German, English, or Spanish.
+
+[View the Candidate Application Automation](recruitment/candidate-application-automation/)
 
 ### AI Job Search & Candidate Matching Automation
 
@@ -22,8 +28,14 @@ A monitoring workflow that checks website availability on a schedule, records re
 
 ## Workflow Categories
 
-### Recruitment & AI Matching
+### Recruitment & Candidate Processing
 
+- [Candidate Application Automation](recruitment/candidate-application-automation/)
+- Two-stage candidate registration and profile completion
+- Duplicate-email prevention and unique candidate IDs
+- Multilingual candidate communication in German, English, and Spanish
+- Google Docs profile generation and PDF export
+- Google Drive storage and HR delivery
 - [AI Job Search & Candidate Matching Automation](recruitment/ai-job-search-matching/)
 - Multi-source job collection with Apify
 - AI-based candidate-to-job evaluation
@@ -39,21 +51,18 @@ A monitoring workflow that checks website availability on a schedule, records re
 
 ### Document Automation
 
-- Candidate PDF generation
-- Google Docs template generation
+- Candidate profile generation
+- Google Docs template processing
+- Automated PDF export
 - Google Drive file storage
-
-### Image Processing
-
-- Coin image upload and file organisation
-- Duplicate file replacement
-- Google Drive storage
 
 ### Email Automation
 
 - Multilingual email routing
 - Candidate confirmation emails
-- Status-based email notifications
+- Duplicate-registration notifications
+- HR candidate-package delivery
+- Status-based notifications
 
 ## Technologies
 
@@ -65,11 +74,12 @@ A monitoring workflow that checks website availability on a schedule, records re
 - Webhooks
 - JSON
 - Google Sheets
-- Google Docs
+- Google Docs API
 - Google Drive
 - Gmail
 - Telegram Bot API
 - Tally Forms
+- PDF generation
 
 ## Engineering Approach
 
@@ -82,6 +92,8 @@ The workflows are designed with:
 - Duplicate prevention
 - Structured LLM outputs
 - Score validation and rule-based adjustments
+- Multilingual routing
+- Completion-state validation
 - Error handling and logging
 - Reusable configuration values
 - Minimal duplicated logic
@@ -90,18 +102,20 @@ The workflows are designed with:
 
 ## Security
 
-Credentials, API keys, access tokens, private Google Sheet IDs, Telegram chat IDs, and other secrets are not included in this repository.
+Credentials, API keys, access tokens, private Google resource IDs, Telegram chat IDs, production webhook IDs, real candidate records, and other secrets are not included in this repository.
 
 Before importing a workflow, configure the required credentials directly inside n8n and replace all documented placeholder values.
+
+Workflows that process candidate data should also use restricted access permissions, GDPR-compliant privacy information, secure webhook endpoints, minimal data collection, and appropriate execution-data retention limits.
 
 ## Importing a Workflow
 
 1. Open the required project folder.
-2. Download the workflow JSON file.
-3. Import it into n8n.
+2. Download the workflow JSON file or files.
+3. Import them into n8n.
 4. Configure the required credentials.
 5. Replace placeholder configuration values.
-6. Review the project README for setup instructions.
+6. Review the project README and included templates.
 7. Test the workflow manually before activation.
 
 ## Author
