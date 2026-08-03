@@ -1,0 +1,1120 @@
+{
+  "name": "Candidate Profile Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const fields = $json.body?.data?.fields || [];\nconst data = $json.body?.data || {};\n\nfunction getField(label) {\n  return fields.find(f => f.label === label);\n}\n\nfunction getValue(label) {\n  const field = getField(label);\n  if (!field) return \"\";\n\n  if (field.type === \"FILE_UPLOAD\") {\n    return field.value?.[0]?.url ?? \"\";\n  }\n\n  return field.value ?? \"\";\n}\n\nconst cvField = getField(\"Lebenslauf hochladen\");\nconst cvFile = cvField?.value?.[0] ?? null;\n\nreturn [\n  {\n    json: {\n      // Only used to find/validate trusted candidate row\n      candidateId: String(getValue(\"candidateId\")).trim(),\n      email: String(getValue(\"email\")).trim().toLowerCase(),\n\n      // Form 2 data only\n      salaryExpectation: String(getValue(\"Gehaltsvorstellung\")).trim(),\n\n      startDate: (() => {\n        const value = String(getValue(\"Frühestmöglicher Eintrittstermin\")).trim();\n        if (!value) return \"\";\n\n        const d = new Date(value);\n        if (Number.isNaN(d.getTime())) return value;\n\n        return d.toLocaleDateString(\"de-DE\");\n      })(),\n\n      experienceYears: String(getValue(\"Berufserfahrung\")).trim(),\n      motivation: String(getValue(\"Kurzbeschreibung / Motivation\")).trim(),\n\n      // CV upload data\n      cvUrl: cvFile?.url || \"\",\n      cvFileName: cvFile?.name || \"\",\n      cvFileType: cvFile?.mimeType || \"\",\n      cvFileSize: cvFile?.size || \"\",\n\n      // Tally metadata\n      tallySubmissionId: data.submissionId || \"\",\n      submittedAt: data.createdAt || \"\",\n      submissionPreviewUrl: data.submissionPreviewUrl || \"\",\n      submissionPdfUrl: data.submissionPdfUrl || \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3264,
+        784
+      ],
+      "id": "21b764f9-0f59-49ab-bfad-41a83b501054",
+      "name": "Normalize Form 2 Data"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "candidate-details",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3216,
+        1216
+      ],
+      "id": "593920bb-407d-4800-ae1c-920a83f87973",
+      "name": " Receive Candidate Details",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const trusted = $('Find Candidate Record').first().json;\nconst form2 = $('Normalize Form 2 Data').first().json;\n\n// Salary formatting (accepts: 58000, 58.000, 58.000 €, €58.000, €72,000, 72000 €)\nconst rawSalary = String(form2.salaryExpectation || \"\").trim();\n\nconst cleanedSalary = rawSalary\n  .replace(/[€\\s]/g, \"\")\n  .replace(/\\./g, \"\")\n  .replace(/,/g, \"\");\n\nconst salaryNumber = Number(cleanedSalary);\n\nconst salaryFormatted = Number.isFinite(salaryNumber) && salaryNumber > 0\n  ? new Intl.NumberFormat(\"de-DE\").format(salaryNumber) + \" €\"\n  : rawSalary;\n\nconst experienceNumber = Number(form2.experienceYears || 0);\n\nconst experienceFormatted = experienceNumber === 1\n  ? \"1 Jahr\"\n  : experienceNumber\n    ? `${experienceNumber} Jahre`\n    : \"\";\n\nconst generationDate = new Date().toLocaleDateString(\"de-DE\");\n\nconst submissionDate = form2.submittedAt\n  ? new Date(form2.submittedAt).toLocaleDateString(\"de-DE\")\n  : \"\";\n\nreturn [\n  {\n    json: {\n      // Trusted Form 1 data from Google Sheets only\n      candidateId: trusted.CandidateID,\n      name: trusted.Name,\n      email: trusted.Email,\n      phone: String(trusted.Phone || \"\"),\n      position: trusted.Position,\n      language: trusted.Language,\n\n      // Workflow configuration\n      hrEmail: \"hr@example.com\",\n\n      // Form 2 details\n      salary: form2.salaryExpectation || \"\",\n      salaryFormatted,\n      startDate: form2.startDate || \"\",\n      experience: form2.experienceYears || \"\",\n      experienceFormatted,\n      motivation: form2.motivation || \"\",\n\n      // CV / submission info\n      cv: form2.cvUrl || \"\",\n      cvFileName: form2.cvFileName || \"Lebenslauf\",\n      cvFileType: form2.cvFileType || \"Datei\",\n      submissionDate,\n\n      tallySubmissionId: form2.tallySubmissionId || \"\",\n      submissionPdfUrl: form2.submissionPdfUrl || \"\",\n      generationDate\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1872,
+        64
+      ],
+      "id": "56818a14-4403-4944-8a82-b85a6e7a3c2f",
+      "name": "Combine Form 1 + Form 2 Data"
+    },
+    {
+      "parameters": {
+        "operation": "copy",
+        "fileId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_DOC_TEMPLATE_ID",
+          "mode": "list",
+          "cachedResultName": "Luminar - Kandidatenprofil (Vorlage)",
+          "cachedResultUrl": "https://docs.google.com/document/d/YOUR_GOOGLE_DOC_TEMPLATE_ID/edit?usp=drivesdk"
+        },
+        "name": "={{ \"Kandidatenprofil_\" + $json.candidateId + \"_\" + $json.name }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1488,
+        64
+      ],
+      "id": "cc2c0b55-dfbd-4e7d-822b-4044cbbe41d5",
+      "name": "Copy Candidate Profile Template",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Copy Candidate Profile Template').first().json.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "application/pdf",
+              "drawingsToFormat": "application/pdf",
+              "slidesToFormat": "application/pdf",
+              "sheetsToFormat": "application/pdf"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1360,
+        416
+      ],
+      "id": "0cf08dcd-0039-4912-b78d-e4f914661431",
+      "name": "Export Candidate Profile as PDF",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "={{ \n  \"Kandidatenprofil_\" \n  + $('Combine Form 1 + Form 2 Data').first().json.candidateId \n  + \"_\" \n  + $('Combine Form 1 + Form 2 Data').first().json.name.replace(/\\s+/g, \"_\") \n  + \".pdf\" \n}}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Generated Profiles",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/YOUR_GOOGLE_DRIVE_FOLDER_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -1360,
+        688
+      ],
+      "id": "4e82ded5-48c1-4c8c-9479-baf12d0c07bb",
+      "name": "Save Candidate Profile PDF",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Combine Form 1 + Form 2 Data').first().json.hrEmail }}",
+        "subject": "={{ \"Neues Kandidatenprofil – \" + $('Combine Form 1 + Form 2 Data').first().json.candidateId }}",
+        "message": "=<p>Hallo,</p>\n\n<p>im Anhang finden Sie das automatisch erstellte Kandidatenprofil.</p>\n\n<ul>\n  <li><strong>Kandidat:</strong> {{ $('Combine Form 1 + Form 2 Data').first().json.name }}</li>\n  <li><strong>Position:</strong> {{ $('Combine Form 1 + Form 2 Data').first().json.position }}</li>\n  <li><strong>E-Mail:</strong> {{ $('Combine Form 1 + Form 2 Data').first().json.email }}</li>\n  <li><strong>Telefon:</strong> {{ $('Combine Form 1 + Form 2 Data').first().json.phone }}</li>\n</ul>\n\n<p>Im Anhang befinden sich:</p>\n\n<ul>\n  <li>📄 Kandidatenprofil (PDF)</li>\n  <li>📎 Lebenslauf des Kandidaten</li>\n</ul>\n\n<p>Viele Grüße<br>Recruitment Automation</p>",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data,cvFile"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        160
+      ],
+      "id": "445ec85e-a958-4e89-9bd2-ddd4b258eb84",
+      "name": "Send HR Candidate Package",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Combine Form 1 + Form 2 Data').first().json.cv }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "cvFile"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1088,
+        160
+      ],
+      "id": "02360e7a-6c3c-41e2-b878-9530ae13fb1c",
+      "name": "Download Candidate CV"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Luminar Recruitment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Candidates",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "CandidateID": "={{ $('Combine Form 1 + Form 2 Data').first().json.candidateId }}",
+            "Status": "Abgeschlossen",
+            "CompletedAt": "={{ $now.toFormat('dd.MM.yyyy HH:mm') }}"
+          },
+          "matchingColumns": [
+            "CandidateID"
+          ],
+          "schema": [
+            {
+              "id": "CandidateID",
+              "displayName": "CandidateID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position",
+              "displayName": "Position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Language",
+              "displayName": "Language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CompletedAt",
+              "displayName": "CompletedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CreatedAt",
+              "displayName": "CreatedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "RegistrationDate",
+              "displayName": "RegistrationDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -112,
+        656
+      ],
+      "id": "182e4cd7-fbc3-4a86-ad57-8713d637bd2b",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Combine Form 1 + Form 2 Data').first().json.email }}",
+        "subject": "Hemos recibido su perfil de candidatura",
+        "message": "=<p>Hola {{ $('Combine Form 1 + Form 2 Data').first().json.name }},</p>\n\n<p>Gracias por completar su solicitud.</p>\n\n<p>Hemos recibido correctamente toda su información y hemos creado su perfil de candidatura.</p>\n\n<p>Su candidatura ya ha sido enviada a nuestro equipo de selección. Nos pondremos en contacto con usted en cuanto haya novedades sobre los próximos pasos.</p>\n\n<p>Gracias por su interés en colaborar con Luminar Consulting GmbH.</p>\n\n<p>Saludos cordiales,<br>\nLuminar Consulting GmbH</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -544,
+        1008
+      ],
+      "id": "fa79fd3d-ca93-4509-bfc1-996c43421ca0",
+      "name": "Send Candidate Confirmation (ES)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Combine Form 1 + Form 2 Data').first().json.email }}",
+        "subject": "Your candidate profile has been successfully submitted",
+        "message": "=<p>Hello {{ $('Combine Form 1 + Form 2 Data').first().json.name }},</p>\n\n<p>Thank you for completing your application.</p>\n\n<p>We have successfully received your application details and created your candidate profile.</p>\n\n<p>Your application has already been forwarded to our recruitment team. We will contact you as soon as there is an update regarding the next steps.</p>\n\n<p>Thank you for your interest in joining Luminar Consulting GmbH.</p>\n\n<p>Kind regards,<br>\nLuminar Consulting GmbH</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -560,
+        704
+      ],
+      "id": "e458a7b1-b781-4400-8058-7651cb222787",
+      "name": "Send Candidate Confirmation (EN)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Combine Form 1 + Form 2 Data').first().json.email }}",
+        "subject": "Ihr Kandidatenprofil wurde erfolgreich übermittelt",
+        "message": "=<p>Hallo {{ $('Combine Form 1 + Form 2 Data').first().json.name }},</p>\n\n<p>vielen Dank für das Ausfüllen unseres Bewerbungsformulars.</p>\n\n<p>Wir haben Ihre vollständigen Bewerbungsunterlagen erfolgreich erhalten und Ihr Kandidatenprofil erstellt.</p>\n\n<p>Ihre Bewerbung wurde bereits an unser Recruiting-Team weitergeleitet. Wir melden uns bei Ihnen, sobald wir den nächsten Schritt mit Ihnen besprechen möchten.</p>\n\n<p>Vielen Dank für Ihr Interesse an einer Zusammenarbeit mit der Luminar Consulting GmbH.</p>\n\n<p>Mit freundlichen Grüßen<br>\nLuminar Consulting GmbH</p>",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -576,
+        448
+      ],
+      "id": "1afbccf5-2a7b-472a-a3f6-fb03e7f0ca8f",
+      "name": "Send Candidate Confirmation (DE)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Combine Form 1 + Form 2 Data').first().json.language }}",
+                    "rightValue": "Deutsch",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e1f544fd-d128-49d4-8f82-3b1473d7d3be"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b663c321-f769-48f2-b6cb-44e161cbf3f8",
+                    "leftValue": "={{ $('Combine Form 1 + Form 2 Data').first().json.language }}",
+                    "rightValue": "English",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b8f998eb-c0c7-4aed-b605-ce6219526d03",
+                    "leftValue": "={{ $('Combine Form 1 + Form 2 Data').first().json.language }}",
+                    "rightValue": "Español",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -928,
+        672
+      ],
+      "id": "f27a90bc-c19d-47da-9f32-f85652e1905a",
+      "name": "Route by Candidate Language"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://docs.googleapis.com/v1/documents/\" + $json.id + \":batchUpdate\" }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDocsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n(() => {\n  const data = $('Combine Form 1 + Form 2 Data').first().json;\n  const open = String.fromCharCode(123,123);\n  const close = String.fromCharCode(125,125);\n\n  return {\n    requests: Object.entries({\n      candidateId: data.candidateId,\n      generationDate: data.generationDate,\n      name: data.name,\n      email: data.email,\n      phone: String(data.phone || \"\"),\n      position: data.position,\n      language: data.language,\n      salaryFormatted: data.salaryFormatted,\n      startDate: data.startDate,\n      experienceFormatted: data.experienceFormatted,\n      motivation: data.motivation,\n      cvFileName: data.cvFileName,\n      cvFileType: data.cvFileType,\n      submissionDate: data.submissionDate\n    }).map(([k,v]) => ({\n      replaceAllText: {\n        containsText: {\n          text: open + k + close,\n          matchCase: true\n        },\n        replaceText: v ?? \"\"\n      }\n    }))\n  };\n})()\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1664,
+        416
+      ],
+      "id": "d64f2178-eac5-4fa5-913e-f4288ce87691",
+      "name": "Populate Candidate Profile",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_DOCS_CREDENTIAL_ID",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Luminar Recruitment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Candidates",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "CandidateID",
+              "lookupValue": "={{ $json.candidateId }}"
+            },
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $json.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -2816,
+        768
+      ],
+      "id": "28a540c2-7f8b-4fba-8eda-daa7ed2b0259",
+      "name": "Find Candidate Record",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6d440b40-445d-4f6a-b79c-7ab20fae4020",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Abgeschlossen",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2576,
+        768
+      ],
+      "id": "e455b10a-8a34-4316-a2d9-c7ab207dd90b",
+      "name": "Already Completed?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "Deutsch",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e1f544fd-d128-49d4-8f82-3b1473d7d3be"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b663c321-f769-48f2-b6cb-44e161cbf3f8",
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "English",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "b8f998eb-c0c7-4aed-b605-ce6219526d03",
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "Español",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -2560,
+        1152
+      ],
+      "id": "1bb2c1e9-e382-4310-a852-35238c7b84f8",
+      "name": "Send Already Completed Email"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n{\n  success: false,\n  error: \"APPLICATION_ALREADY_COMPLETED\",\n  message: \"Diese Bewerbung wurde bereits erfolgreich abgeschlossen. Eine erneute Übermittlung ist nicht erforderlich.\"\n}\n}}",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1696,
+        1168
+      ],
+      "id": "e18c132f-2d62-41ba-8e21-f46057915c6d",
+      "name": "Respond - Candidate Not Found1"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Ihre Bewerbung wurde bereits erfolgreich eingereicht",
+        "message": "=<p>Hallo <strong>{{ $json.Name }}</strong>,</p>\n\n<p>unser System zeigt, dass Ihre Bewerbung bereits erfolgreich eingereicht wurde.</p>\n\n<p>Eine erneute Übermittlung ist nicht erforderlich. Vielen Dank für Ihr Interesse an der Luminar Consulting GmbH.</p>\n\n<p>Mit freundlichen Grüßen<br>\n<strong>Luminar Consulting GmbH</strong><br>\nRecruiting Team</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2128,
+        928
+      ],
+      "id": "b0754d55-7119-4b4b-91a0-2c5c03cf994b",
+      "name": "Send Already Completed Email (DE)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Your application has already been submitted",
+        "message": "=<p>Hello <strong>{{ $json.Name }}</strong>,</p>\n\n<p>Our records show that your application has already been successfully submitted.</p>\n\n<p>There is no need to submit it again. Thank you for your interest in Luminar Consulting GmbH.</p>\n\n<p>Kind regards,<br>\n<strong>Luminar Consulting GmbH</strong><br>\nRecruiting Team</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2112,
+        1424
+      ],
+      "id": "4704b487-c4a3-4b3e-a7ea-cc4b3ffd1f00",
+      "name": "Send Already Completed Email (EN)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Su solicitud ya ha sido enviada",
+        "message": "=<p>Hola <strong>{{ $json.Name }}</strong>,</p>\n\n<p>Nuestro sistema muestra que su solicitud ya ha sido enviada correctamente.</p>\n\n<p>No es necesario volver a enviarla. Gracias por su interés en Luminar Consulting GmbH.</p>\n\n<p>Saludos cordiales,<br>\n<strong>Luminar Consulting GmbH</strong><br>\nEquipo de Selección</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2128,
+        1168
+      ],
+      "id": "72f0945b-2553-45ed-b97a-5ff86275e94b",
+      "name": "Send Already Completed Email (ES)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b5c124d3-6271-4c27-b416-1a51147cafa6",
+              "leftValue": "={{ $json.candidateId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "05f1545d-1247-417d-a695-afdcca2a8327",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "=",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -3072,
+        784
+      ],
+      "id": "fc56f407-d950-4d7b-9d0f-88c51210c7f9",
+      "name": "IF Valid Submission?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "=={{\n{\n  success: false,\n  error: \"INVALID_SUBMISSION\",\n  message: \"Die übermittelten Daten sind unvollständig oder ungültig. Bitte öffnen Sie den Link aus der Einladungs-E-Mail erneut und versuchen Sie es noch einmal.\"\n}\n}}",
+        "options": {
+          "responseCode": 404
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -3040,
+        1072
+      ],
+      "id": "64db41e2-b0f2-439d-b22f-a6f2d47daf9b",
+      "name": "Respond - Candidate Not Found"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Normalize Form 2 Data": {
+      "main": [
+        [
+          {
+            "node": "IF Valid Submission?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    " Receive Candidate Details": {
+      "main": [
+        [
+          {
+            "node": "Normalize Form 2 Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Form 1 + Form 2 Data": {
+      "main": [
+        [
+          {
+            "node": "Copy Candidate Profile Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Copy Candidate Profile Template": {
+      "main": [
+        [
+          {
+            "node": "Populate Candidate Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export Candidate Profile as PDF": {
+      "main": [
+        [
+          {
+            "node": "Save Candidate Profile PDF",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Download Candidate CV",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Route by Candidate Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Candidate Profile PDF": {
+      "main": [
+        []
+      ]
+    },
+    "Download Candidate CV": {
+      "main": [
+        [
+          {
+            "node": "Send HR Candidate Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send HR Candidate Package": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update row in sheet": {
+      "main": [
+        []
+      ]
+    },
+    "Send Candidate Confirmation (ES)": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Candidate Confirmation (EN)": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Candidate Confirmation (DE)": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Candidate Language": {
+      "main": [
+        [
+          {
+            "node": "Send Candidate Confirmation (DE)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Candidate Confirmation (EN)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Candidate Confirmation (ES)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Populate Candidate Profile": {
+      "main": [
+        [
+          {
+            "node": "Export Candidate Profile as PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Candidate Record": {
+      "main": [
+        [
+          {
+            "node": "Already Completed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already Completed?": {
+      "main": [
+        [
+          {
+            "node": "Send Already Completed Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Combine Form 1 + Form 2 Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Already Completed Email": {
+      "main": [
+        [
+          {
+            "node": "Send Already Completed Email (DE)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Already Completed Email (ES)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Already Completed Email (EN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Already Completed Email (DE)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Candidate Not Found1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Already Completed Email (ES)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Candidate Not Found1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Already Completed Email (EN)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Candidate Not Found1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid Submission?": {
+      "main": [
+        [
+          {
+            "node": "Find Candidate Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Candidate Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}

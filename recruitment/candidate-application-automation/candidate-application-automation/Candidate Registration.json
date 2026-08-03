@@ -1,0 +1,819 @@
+{
+  "name": "Candidate Registration",
+  "nodes": [
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "063cad2e-952c-4d48-9552-e8ead76dae0c",
+              "leftValue": "={{ Object.keys($json).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1680,
+        176
+      ],
+      "id": "07cda068-28a7-4475-85c1-94c787a63ec9",
+      "name": "IF Email Exists?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Normalize Form 1 Data').first().json;\nconst now = new Date();\n\nconst candidateId =\n  'LCG-' +\n  now.getFullYear() +\n  String(now.getMonth() + 1).padStart(2, '0') +\n  String(now.getDate()).padStart(2, '0') +\n  '-' +\n  Date.now().toString().slice(-6);\n\nreturn {\n  ...data,\n  candidateId,\n  status: 'Erstkontakt',\n  createdAt: now\n  .toLocaleString(\"de-DE\", {\n    timeZone: \"Europe/Berlin\",\n    day: \"2-digit\",\n    month: \"2-digit\",\n    year: \"numeric\",\n    hour: \"2-digit\",\n    minute: \"2-digit\",\n    second: \"2-digit\",\n    hour12: false\n  })\n  .replace(\",\", \"\")\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        -64
+      ],
+      "id": "82d93ef6-9f84-4d9d-b6ea-d6725210b3f3",
+      "name": "Generate Candidate ID"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst detailFormUrl =\n  'https://tally.so/r/YOUR_FORM_ID'\n  + '?candidateId=' + encodeURIComponent(item.CandidateID)\n  + '&name=' + encodeURIComponent(item.Name)\n  + '&email=' + encodeURIComponent(item.Email)\n  + '&phone=' + encodeURIComponent(item.Phone)\n  + '&position=' + encodeURIComponent(item.Position)\n  + '&language=' + encodeURIComponent(item.Language);\n\nreturn [\n  {\n    json: {\n      ...item,\n      detailFormUrl,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -944,
+        -64
+      ],
+      "id": "3e335e8f-10c3-4cca-ac4a-0708c3da1567",
+      "name": "Build Detail Form URL"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "Deutsch",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "50d1d85d-6dd1-495d-a8e4-872273d17496"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a6246a16-9a6f-4cce-9981-b9f1afa5de5b",
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "English",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7e38fa5d-fa93-4e7b-915d-7b99bda56b7f",
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "Español",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -944,
+        192
+      ],
+      "id": "96e14744-d236-4b52-8020-b0c7b81724c7",
+      "name": "Switch Language"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "candidate-initial",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2208,
+        416
+      ],
+      "id": "c0bfb70f-32b4-4acb-b16f-2cb576785bf7",
+      "name": "Receive Candidate Interest"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n{\n  success: true,\n  candidateId: $json.candidateId,\n  message: \"Candidate registered successfully.\"\n}\n}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        208
+      ],
+      "id": "8f67c42f-56fd-40e7-a70d-7571e1a75543",
+      "name": "Respond: Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{\n{\n  success: false,\n  error: \"DUPLICATE_EMAIL\",\n  message: \"This email address is already registered. An information email has been sent to the candidate.\"\n}\n}}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -480,
+        -448
+      ],
+      "id": "63a8812b-ad99-40f8-acfd-5357ad827dd0",
+      "name": "Respond: Duplicate Email"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Luminar Recruitment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Candidates",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Email",
+              "lookupValue": "={{ $json.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1936,
+        192
+      ],
+      "id": "7c9ebc1a-6f0a-4039-8823-b0befcbdaa7e",
+      "name": "Check Email Availability",
+      "alwaysOutputData": true,
+      "notesInFlow": false,
+      "executeOnce": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2 API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Luminar Recruitment",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Candidates",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "CandidateID": "={{ $json.candidateId }}",
+            "Name": "={{ $json.name }}",
+            "Email": "={{ $json.email }}",
+            "Phone": "={{ $json.phone }}",
+            "Position": "={{ $json.position }}",
+            "Language": "={{ $json.language }}",
+            "Status": "={{ $json.status }}",
+            "CreatedAt": "={{ $json.createdAt }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "CandidateID",
+              "displayName": "CandidateID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position",
+              "displayName": "Position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Language",
+              "displayName": "Language",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CompletedAt",
+              "displayName": "CompletedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CreatedAt",
+              "displayName": "CreatedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1120,
+        -64
+      ],
+      "id": "4286100b-4c98-4bd7-b6da-376e9059edf4",
+      "name": "Save Candidate",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Vielen Dank!",
+        "message": "=<p>Hallo,</p>\n\n<p>für diese E-Mail-Adresse liegt bereits eine Bewerbung bei <strong>Luminar Consulting GmbH</strong> vor.</p>\n\n<p>Eine erneute Registrierung ist nicht erforderlich.</p>\n\n<p>Falls Sie Ihr Bewerberprofil noch nicht vollständig ausgefüllt haben, verwenden Sie bitte den Link aus Ihrer bereits erhaltenen E-Mail.</p>\n\n<p>Sollten Sie keine E-Mail mehr finden oder Unterstützung benötigen, antworten Sie einfach auf diese Nachricht oder kontaktieren Sie unser Recruiting-Team.</p>\n\n<p>Freundliche Grüße<br>\nLuminar Consulting GmbH</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -944,
+        -656
+      ],
+      "id": "b1d83775-5bbe-4734-8aa9-05119a21ad9e",
+      "name": "Send Duplicate Email (DE)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Thank You!",
+        "message": "=<p>Thank you!</p>\n\n<p>Your request has been submitted successfully.</p>\n\n<p>If your email address is not already registered, you will receive a confirmation email shortly with your personal link to complete your candidate profile.</p>\n\n<p>If you have already registered, there is no need to submit another request. Please use the link you previously received by email.</p>\n\n<p>Please also check your spam or junk folder if you do not receive the email within a few minutes.</p>\n\n<p>We appreciate your interest in joining Luminar Consulting GmbH.</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -944,
+        -448
+      ],
+      "id": "6b12a2a4-6cf2-4db9-aaa2-d97d5d87507a",
+      "name": "Send Duplicate Email (EN)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Gracias!",
+        "message": "=<p>¡Gracias!</p>\n\n<p>Su solicitud se ha enviado correctamente.</p>\n\n<p>Si su dirección de correo electrónico aún no está registrada, recibirá en breve un correo electrónico de confirmación con su enlace personal para completar su perfil de candidato.</p>\n\n<p>Si ya está registrado, no es necesario enviar otra solicitud. Utilice el enlace que recibió anteriormente por correo electrónico.</p>\n\n<p>Si no recibe el correo en unos minutos, revise también su carpeta de spam o correo no deseado.</p>\n\n<p>Gracias por su interés en Luminar Consulting GmbH.</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -944,
+        -240
+      ],
+      "id": "7abcd7d6-eb17-41a2-b5f4-2d6a2fc5e7e3",
+      "name": "Send Duplicate Email (ES)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Vielen Dank für Ihre Bewerbung bei Luminar Consulting GmbH",
+        "message": "=<p>Hallo {{ $json.Name }},</p>\n\n<p>vielen Dank für Ihr Interesse an einer Zusammenarbeit mit <strong>Luminar Consulting GmbH</strong>.</p>\n\n<p>Wir haben Ihre ersten Angaben erfolgreich erhalten.</p>\n\n<p>Bitte vervollständigen Sie nun Ihr Bewerberprofil über den folgenden Link:</p>\n\n<p>\n<a href=\"{{ $json.detailFormUrl }}\">\nBewerberprofil vervollständigen\n</a>\n</p>\n\n<p>Falls der Button nicht funktioniert, können Sie diesen Link direkt verwenden:</p>\n\n<p>{{ $('Build Detail Form URL').item.json.detailFormUrl }}</p>\n\n<p>Vielen Dank.</p>\n\n<p>\nFreundliche Grüße<br>\nLuminar Consulting GmbH\n</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -480,
+        -16
+      ],
+      "id": "9e34db66-966c-4fe2-b41d-8523aa152bae",
+      "name": "Send Success Email (DE)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Thank you for your application to Luminar Consulting GmbH",
+        "message": "= <p>Hello {{ $json.Email }},</p>\n\n<p>Thank you for your interest in joining <strong>Luminar Consulting GmbH</strong>.</p>\n\n<p>We have successfully received your initial application.</p>\n\n<p>Please complete your candidate profile by clicking the link below:</p>\n\n<p>\n<a href=\"{{ $('Build Detail Form URL').item.json.detailFormUrl }}\">\nComplete Candidate Profile\n</a>\n</p>\n\n<p>If the button above does not work, you can also copy and paste the following link into your browser:</p>\n\n<p>{{ $('Build Detail Form URL').item.json.detailFormUrl }}</p>\n\n<p>Thank you for your time. We look forward to reviewing your application.</p>\n\n<p>\nKind regards,<br>\nLuminar Consulting GmbH\n</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -464,
+        208
+      ],
+      "id": "6adc1158-8b38-495c-8e52-c6c54b57c233",
+      "name": "Send Success Email (EN)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "Gracias por su solicitud en Luminar Consulting GmbH",
+        "message": "=<p>Hola {{ $json.Email }},</p>\n\n<p>Gracias por su interés en formar parte de <strong>Luminar Consulting GmbH</strong>.</p>\n\n<p>Hemos recibido correctamente su solicitud inicial.</p>\n\n<p>Por favor, complete su perfil de candidato haciendo clic en el siguiente enlace:</p>\n\n<p>\n<a href=\"{{ $('Build Detail Form URL').item.json.detailFormUrl }}\">\nCompletar perfil de candidato\n</a>\n</p>\n\n<p>Si el botón no funciona, también puede copiar y pegar el siguiente enlace en su navegador:</p>\n\n<p>{{ $('Build Detail Form URL').item.json.detailFormUrl }}</p>\n\n<p>Muchas gracias por su tiempo. Esperamos revisar su solicitud.</p>\n\n<p>\nAtentamente,<br>\nLuminar Consulting GmbH\n</p>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -464,
+        400
+      ],
+      "id": "274cf403-56c0-43af-9501-23bf7b77ff5d",
+      "name": "Send Success Email (ES)",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const fields = $json.body?.data?.fields || [];\nconst data = $json.body?.data || {};\n\nconst getField = (label) => fields.find(f => f.label === label);\n\nconst getValue = (label) => {\n  const field = getField(label);\n  return field?.value ?? \"\";\n};\n\nconst getChoiceText = (label) => {\n  const field = getField(label);\n  if (!field) return \"\";\n\n  const selectedId = Array.isArray(field.value) ? field.value[0] : field.value;\n  const selectedOption = field.options?.find(option => option.id === selectedId);\n\n  return selectedOption?.text ?? \"\";\n};\n\nconst normalizePhone = (value) => {\n  let phone = String(value || \"\").trim();\n\n  phone = phone\n    .replace(/^\"+|\"+$/g, \"\")\n    .replace(/[^\\d+]/g, \"\")\n    .replace(/(?!^)\\+/g, \"\");\n\n  if (phone.startsWith(\"+4949\")) {\n    phone = \"+49\" + phone.slice(5);\n  }\n\n  return phone;\n};\n\nreturn [\n  {\n    json: {\n      name: String(getValue(\"Name\")).trim(),\n      email: String(getValue(\"E-Mail-Adresse\")).trim().toLowerCase(),\n      phone: normalizePhone(getValue(\"Telefonnummer\")),\n      position: String(getValue(\"Gewünschte Position\")).trim(),\n      language: getChoiceText(\"Bevorzugte Kommunikationssprache\"),\n      tallySubmissionId: data.submissionId || \"\",\n      submissionPdfUrl: data.submissionPdfUrl || \"\",\n      submissionDate: data.createdAt || \"\"\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2208,
+        192
+      ],
+      "id": "1d729d7e-4a24-4750-a8cb-1ba6aec6d60f",
+      "name": "Normalize Form 1 Data"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "Deutsch",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "50d1d85d-6dd1-495d-a8e4-872273d17496"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "a6246a16-9a6f-4cce-9981-b9f1afa5de5b",
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "English",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7e38fa5d-fa93-4e7b-915d-7b99bda56b7f",
+                    "leftValue": "={{ $json.Language }}",
+                    "rightValue": "Español",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -1328,
+        -496
+      ],
+      "id": "d20cf177-c816-4a97-ab11-f82100d41e1f",
+      "name": "Switch Duplicate Language"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "IF Email Exists?": {
+      "main": [
+        [
+          {
+            "node": "Switch Duplicate Language",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Candidate ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Candidate ID": {
+      "main": [
+        [
+          {
+            "node": "Save Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Detail Form URL": {
+      "main": [
+        [
+          {
+            "node": "Switch Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Language": {
+      "main": [
+        [
+          {
+            "node": "Send Success Email (DE)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Success Email (EN)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Success Email (ES)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Candidate Interest": {
+      "main": [
+        [
+          {
+            "node": "Normalize Form 1 Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Email Availability": {
+      "main": [
+        [
+          {
+            "node": "IF Email Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Save Candidate": {
+      "main": [
+        [
+          {
+            "node": "Build Detail Form URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Duplicate Email (DE)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Duplicate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Duplicate Email (EN)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Duplicate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Duplicate Email (ES)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Duplicate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success Email (DE)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success Email (EN)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Success Email (ES)": {
+      "main": [
+        [
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Form 1 Data": {
+      "main": [
+        [
+          {
+            "node": "Check Email Availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Duplicate Language": {
+      "main": [
+        [
+          {
+            "node": "Send Duplicate Email (DE)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Duplicate Email (EN)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Duplicate Email (ES)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "nodeGroups": [],
+  "tags": []
+}
