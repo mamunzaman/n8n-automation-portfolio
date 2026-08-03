@@ -20,6 +20,12 @@ Deterministic JavaScript logic handles filtering, validation, scoring adjustment
 
 [View the AI Job Search & Candidate Matching Automation](recruitment/ai-job-search-matching/)
 
+### AI Job Application Tracker
+
+A scheduled Dropbox document-processing workflow that reads job-application PDFs, extracts the company and position with OpenAI, checks Google Sheets for an existing application, saves new records, and sends Telegram notifications for new or duplicate applications. Files are processed one at a time with controlled loop handling.
+
+[View the AI Job Application Tracker](recruitment/ai-job-application-tracker/)
+
 ### Website Uptime Monitor
 
 A monitoring workflow that checks website availability on a schedule, records response status and response time in Google Sheets, tracks the latest state, and sends a Telegram alert when a website changes from UP to DOWN.
@@ -41,6 +47,11 @@ A monitoring workflow that checks website availability on a schedule, records re
 - AI-based candidate-to-job evaluation
 - Deterministic validation, ranking, and Top-N selection
 - Google Sheets result storage and Telegram reporting
+- [AI Job Application Tracker](recruitment/ai-job-application-tracker/)
+- Dropbox folder monitoring and sequential file processing
+- PDF text extraction and structured AI parsing
+- Google Sheets duplicate detection and application logging
+- Telegram notifications for new and existing applications
 
 ### Monitoring
 
@@ -55,6 +66,8 @@ A monitoring workflow that checks website availability on a schedule, records re
 - Google Docs template processing
 - Automated PDF export
 - Google Drive file storage
+- Dropbox document intake and PDF text extraction
+- AI-assisted document classification and metadata extraction
 
 ### Email Automation
 
@@ -73,6 +86,7 @@ A monitoring workflow that checks website availability on a schedule, records re
 - REST APIs
 - Webhooks
 - JSON
+- Dropbox
 - Google Sheets
 - Google Docs API
 - Google Drive
