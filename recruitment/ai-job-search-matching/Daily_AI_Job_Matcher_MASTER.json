@@ -57,7 +57,7 @@
       "name": "03 - Run LinkedIn Jobs Scraper",
       "credentials": {
         "apifyApi": {
-          "id": "XFtglUXmmvkQv1hi",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Apify account"
         }
       }
@@ -80,7 +80,7 @@
       "name": "04 - Get LinkedIn Dataset Items",
       "credentials": {
         "apifyApi": {
-          "id": "XFtglUXmmvkQv1hi",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Apify account"
         }
       }
@@ -115,17 +115,15 @@
       "parameters": {
         "documentId": {
           "__rl": true,
-          "value": "15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg",
+          "value": "YOUR_GOOGLE_SHEET_ID",
           "mode": "list",
-          "cachedResultName": "Daily AI Job Matches",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit?usp=drivesdk"
+          "cachedResultName": "Daily AI Job Matches"
         },
         "sheetName": {
           "__rl": true,
           "value": "gid=0",
           "mode": "list",
-          "cachedResultName": "Matched Jobs",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit#gid=0"
+          "cachedResultName": "Matched Jobs"
         },
         "options": {}
       },
@@ -140,7 +138,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "EJWIdlliX51yORiz",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Google Sheets account"
         }
       }
@@ -241,7 +239,7 @@
       "name": "13 - OpenAI Job Match Analysis",
       "credentials": {
         "openAiApi": {
-          "id": "0DWyIqgroTQzbTqI",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "OpenAi account"
         }
       }
@@ -346,17 +344,15 @@
         "operation": "append",
         "documentId": {
           "__rl": true,
-          "value": "15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg",
+          "value": "YOUR_GOOGLE_SHEET_ID",
           "mode": "list",
-          "cachedResultName": "Daily AI Job Matches",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit?usp=drivesdk"
+          "cachedResultName": "Daily AI Job Matches"
         },
         "sheetName": {
           "__rl": true,
           "value": "gid=0",
           "mode": "list",
-          "cachedResultName": "Matched Jobs",
-          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/15pOO-N1AK6mzeMzRHT4fhSeNSoVdeG7plbAce3VPuXg/edit#gid=0"
+          "cachedResultName": "Matched Jobs"
         },
         "columns": {
           "mappingMode": "autoMapInputData",
@@ -577,7 +573,7 @@
       "name": "20 - Save Matched Jobs",
       "credentials": {
         "googleSheetsOAuth2Api": {
-          "id": "EJWIdlliX51yORiz",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Google Sheets account"
         }
       }
@@ -597,7 +593,7 @@
     },
     {
       "parameters": {
-        "chatId": "497451775",
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
         "text": "={{ $json.telegramMessage }}",
         "additionalFields": {
           "appendAttribution": false,
@@ -612,10 +608,9 @@
       ],
       "id": "f6671a0e-4d67-4120-803a-da25f8a288e1",
       "name": "22 - Send Telegram Job Alert",
-      "webhookId": "e21cb24d-a9fe-4b3c-9da7-48d3c68f1880",
       "credentials": {
         "telegramApi": {
-          "id": "T2dxsLOKEz3Ty1xY",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Telegram account"
         }
       }
@@ -642,7 +637,7 @@
       "name": "03B - Run StepStone Jobs Scraper",
       "credentials": {
         "apifyApi": {
-          "id": "XFtglUXmmvkQv1hi",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Apify account"
         }
       }
@@ -665,7 +660,7 @@
       "name": "04B - Get StepStone Dataset Items",
       "credentials": {
         "apifyApi": {
-          "id": "XFtglUXmmvkQv1hi",
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
           "name": "Apify account"
         }
       }
@@ -984,12 +979,9 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "f510f671-e4b9-485b-9ffb-0ced318ac5fe",
   "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "05817f9eca7eaf8516ca99675ef8af4a8a52a1f9d8d8d6d1a6a8aafe73b54398"
+    "templateCredsSetupCompleted": true
   },
   "nodeGroups": [],
-  "id": "gV9AAtYIrLcS6hlU",
   "tags": []
 }
