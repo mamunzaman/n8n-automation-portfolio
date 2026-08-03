@@ -368,6 +368,10 @@ Credentials must be configured directly inside n8n after importing the
 
 workflow.
 
+## Workflow Overview
+
+![AI Job Search and Candidate Matching workflow](screenshots/workflow-overview.png)
+
 
 
 \## Import
