@@ -1,1 +1,877 @@
-{"name":"AI Job Application Tracker","nodes":[{"parameters":{"rule":{"interval":[{"field":"minutes"}]}},"type":"n8n-nodes-base.scheduleTrigger","typeVersion":1.3,"position":[0,0],"id":"0cb63076-bcc3-4c3b-9a01-d3ab75a7b087","name":"01 Schedule - Check Dropbox"},{"parameters":{"authentication":"oAuth2","resource":"folder","operation":"list","path":"/Automation Projects/Job Applications/Incoming/","filters":{}},"type":"n8n-nodes-base.dropbox","typeVersion":1,"position":[208,0],"id":"56c837a6-73c0-4963-a8b7-b5b51b3c8ef6","name":"02 Dropbox - List Incoming Files","credentials":{"dropboxOAuth2Api":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}},{"parameters":{"conditions":{"options":{"caseSensitive":false,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"3c181f45-3ebd-4e7d-abcf-8319f4c0b4b4","leftValue":"={{ /\\.(pdf|docx)$/i.test($json.name || '') }}","rightValue":"=","operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{"ignoreCase":true}},"type":"n8n-nodes-base.filter","typeVersion":2.3,"position":[416,0],"id":"fc34a5d9-5197-487e-9db3-8c92210f49d7","name":"03 Filter - PDF and DOCX Only"},{"parameters":{"authentication":"oAuth2","operation":"download","path":"={{ $json.pathLower }}"},"type":"n8n-nodes-base.dropbox","typeVersion":1,"position":[672,0],"id":"d2c6bae4-179e-4118-94ca-c0c1e832467e","name":"04 Dropbox - Download File","credentials":{"dropboxOAuth2Api":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}},{"parameters":{"options":{},"batchSize":1},"type":"n8n-nodes-base.splitInBatches","typeVersion":3,"position":[880,0],"id":"5b57f465-7f85-4187-8648-17c6ec59ba35","name":"05 Loop - Process Files One by One"},{"parameters":{"rules":{"values":[{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"37aab90e-696a-4f0f-9e54-bc5b1268e22b","leftValue":"={{ $binary.data.fileExtension.toLowerCase() }}","rightValue":"pdf","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"and"},"renameOutput":true,"outputKey":"PDF"},{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"7bbd4724-a828-4741-9a1c-a9bb196b3a70","leftValue":"={{ $binary.data.fileExtension.toLowerCase() }}","rightValue":"docx","operator":{"type":"string","operation":"equals","name":"filter.operator.equals"}}],"combinator":"and"},"renameOutput":true,"outputKey":"DOCX"}]},"options":{}},"type":"n8n-nodes-base.switch","typeVersion":3.4,"position":[896,272],"id":"38befc4c-3d50-4e07-8abf-4b8128158dd8","name":"06 Switch - Detect File Type"},{"parameters":{"operation":"pdf","options":{}},"type":"n8n-nodes-base.extractFromFile","typeVersion":1.1,"position":[32,512],"id":"15f22806-6d44-4e89-a18e-b59c03287a00","name":"07A Extract - PDF Text"},{"parameters":{"jsCode":"const text = String($json.text || '')\n  .replace(/\\u0000/g, '')\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[ \\t]+/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst file = $('05 Loop - Process Files One by One').item.json;\n\nreturn [\n  {\n    json: {\n      documentText: text,\n      textLength: text.length,\n      extractionSuccessful: text.length >= 100,\n\n      sourceFileName: file.name || '',\n      dropboxFileId: file.id || '',\n      dropboxRevision: file.rev || '',\n      dropboxPath: file.pathDisplay || file.pathLower || '',\n      lastModifiedServer: file.lastModifiedServer || '',\n      fileType: 'PDF',\n    },\n  },\n];"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[240,512],"id":"6a4d567c-42ae-48f4-b184-082cfcfb678c","name":"08A Code - Prepare PDF Text"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"1ca8fae1-5ba3-4e1e-a853-9914f5c0a0f6","leftValue":"={{ $json.extractionSuccessful }}","rightValue":"","operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[464,512],"id":"6474ded1-4168-4b13-9d41-b824632afb4e","name":"09A IF - PDF Text Valid"},{"parameters":{"text":"={{ $json.documentText }}","attributes":{"attributes":[{"name":"company","description":"The company or employer to which the candidate is applying. Do not return the candidate's current or previous employer. Return an empty string if the company cannot be identified."},{"name":"position","description":"The exact job title or position for which the candidate is applying. Return an empty string if it cannot be identified."}]},"options":{}},"type":"@n8n/n8n-nodes-langchain.informationExtractor","typeVersion":1.2,"position":[736,496],"id":"ec8091f1-e60e-43de-a76e-e67becac7496","name":"10 AI - Extract Job Application Data"},{"parameters":{"model":{"__rl":true,"value":"gpt-4.1-mini","mode":"list","cachedResultName":"gpt-4.1-mini"},"builtInTools":{},"options":{}},"type":"@n8n/n8n-nodes-langchain.lmChatOpenAi","typeVersion":1.3,"position":[672,704],"id":"f5f3022e-c959-4c58-9494-cbc5f47d62f0","name":"10A OpenAI - Extraction Model","credentials":{"openAiApi":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}},{"parameters":{"jsCode":"const aiResult =\n  $json.output && typeof $json.output === 'object'\n    ? $json.output\n    : $json;\n\nconst source = $('08A Code - Prepare PDF Text').item.json;\n\nconst clean = (value) =>\n  String(value ?? '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\nconst normalizeKey = (value) =>\n  clean(value)\n    .normalize('NFKD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/\\b(gmbh|ag|ug|se|kg|mbh|ltd|limited|inc)\\b/g, '')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n\nconst company = clean(aiResult.company);\nconst position = clean(aiResult.position);\n\nreturn [\n  {\n    json: {\n      applicationKey: `${normalizeKey(company)}__${normalizeKey(position)}`,\n      company,\n      position,\n\n      sourceFileName: source.sourceFileName || '',\n      dropboxFileId: source.dropboxFileId || '',\n      dropboxRevision: source.dropboxRevision || '',\n      dropboxVersionKey: `${source.dropboxFileId || ''}:${source.dropboxRevision || ''}`,\n      dropboxPath: source.dropboxPath || '',\n      fileType: source.fileType || 'PDF',\n      processedAt: new Date().toISOString(),\n    },\n  },\n];"},"type":"n8n-nodes-base.code","typeVersion":2,"position":[1088,496],"id":"ab1f67da-73e9-49af-b423-dfa3075077db","name":"11 Code - Prepare Application Record"},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"0188f0da-94e6-4e5b-a9a6-6c85a4a3a74c","leftValue":"={{ Boolean($json.company?.trim()) && Boolean($json.position?.trim()) }}","rightValue":"","operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[1296,496],"id":"0b4db24c-1386-4321-9ede-8ddc7ae9c19b","name":"12 IF - Application Data Complete"},{"parameters":{"documentId":{"__rl":true,"value":"REPLACE_WITH_GOOGLE_SHEET_ID","mode":"id"},"sheetName":{"__rl":true,"value":"Applications","mode":"name"},"filtersUI":{"values":[{"lookupColumn":"Company","lookupValue":"={{ $json.company }}"},{"lookupColumn":"Position","lookupValue":"={{ $json.position }}"}]},"options":{"returnFirstMatch":true}},"type":"n8n-nodes-base.googleSheets","typeVersion":4.7,"position":[1280,272],"id":"03686289-2447-4787-a232-f7b84f9aa7b2","name":"13 Sheets - Find Existing Application","alwaysOutputData":true,"credentials":{"googleSheetsOAuth2Api":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}},{"parameters":{"conditions":{"options":{"caseSensitive":true,"leftValue":"","typeValidation":"strict","version":3},"conditions":[{"id":"fc404265-df36-4b22-a3a9-f756f65d6c2b","leftValue":"={{ Boolean($json.Company) && Boolean($json.Position) }}","rightValue":"","operator":{"type":"boolean","operation":"true","singleValue":true}}],"combinator":"and"},"options":{}},"type":"n8n-nodes-base.if","typeVersion":2.3,"position":[1488,272],"id":"84c788c4-81b1-4df9-989b-fc9260c5b1ef","name":"14 IF - Already Applied"},{"parameters":{"operation":"append","documentId":{"__rl":true,"value":"REPLACE_WITH_GOOGLE_SHEET_ID","mode":"id"},"sheetName":{"__rl":true,"value":"Applications","mode":"name"},"columns":{"mappingMode":"defineBelow","value":{"Company":"={{ $('11 Code - Prepare Application Record').item.json.company }}","Position":"={{ $('11 Code - Prepare Application Record').item.json.position }}","ApplicationKey":"={{ $('11 Code - Prepare Application Record').item.json.applicationKey }}","AppliedDate":"={{ $('11 Code - Prepare Application Record').item.json.processedAt.split('T')[0] }}","ApplicationStatus":"Applied","SourceFileName":"={{ $('11 Code - Prepare Application Record').item.json.sourceFileName }}","DropboxFileId":"={{ $('11 Code - Prepare Application Record').item.json.dropboxFileId }}","DropboxPath":"={{ $('11 Code - Prepare Application Record').item.json.dropboxPath }}","FileType":"={{ $('11 Code - Prepare Application Record').item.json.fileType }}","ProcessedAt":"={{ $('11 Code - Prepare Application Record').item.json.processedAt }}"},"matchingColumns":[],"schema":[{"id":"ApplicationKey","displayName":"ApplicationKey","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"AppliedDate","displayName":"AppliedDate","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"Company","displayName":"Company","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"Position","displayName":"Position","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"Location","displayName":"Location","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"JobURL","displayName":"JobURL","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"ApplicationStatus","displayName":"ApplicationStatus","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"SourceFileName","displayName":"SourceFileName","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"DropboxFileId","displayName":"DropboxFileId","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"DropboxPath","displayName":"DropboxPath","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"FileType","displayName":"FileType","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"Confidence","displayName":"Confidence","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true},{"id":"ProcessedAt","displayName":"ProcessedAt","required":false,"defaultMatch":false,"display":true,"type":"string","canBeUsedToMatch":true}],"attemptToConvertTypes":false,"convertFieldsToString":false},"options":{}},"type":"n8n-nodes-base.googleSheets","typeVersion":4.7,"position":[1760,288],"id":"9c724381-68f7-46c1-a30f-84240cbac156","name":"15A Sheets - Add New Application","credentials":{"googleSheetsOAuth2Api":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}},{"parameters":{"chatId":"REPLACE_WITH_TELEGRAM_CHAT_ID","text":"=✅ New application saved  🏢 Company: {{ $('11 Code - Prepare Application Record').item.json.company }} 💼 Position: {{ $('11 Code - Prepare Application Record').item.json.position }} 📅 Applied date: {{ $('11 Code - Prepare Application Record').item.json.processedAt.split('T')[0] }} 📄 File: {{ $('11 Code - Prepare Application Record').item.json.sourceFileName }}  The application was added to Google Sheets.","additionalFields":{}},"type":"n8n-nodes-base.telegram","typeVersion":1.2,"position":[1968,288],"id":"87bd80d5-636c-4ea2-99b2-ff7e0244b636","name":"16A Telegram - New Application Saved","credentials":{"telegramApi":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}},{"parameters":{"chatId":"REPLACE_WITH_TELEGRAM_CHAT_ID","text":"=⚠️ Application already exists  🏢 Company: {{ $('11 Code - Prepare Application Record').item.json.company }} 💼 Position: {{ $('11 Code - Prepare Application Record').item.json.position }} 📄 Current file: {{ $('11 Code - Prepare Application Record').item.json.sourceFileName }}  This company and position already exist in Google Sheets. No new row was added.","additionalFields":{}},"type":"n8n-nodes-base.telegram","typeVersion":1.2,"position":[1968,48],"id":"8e4a7456-f149-4247-8b96-3642155c9329","name":"16B Telegram - Already Applied","credentials":{"telegramApi":{"id":"REPLACE_WITH_CREDENTIAL_ID","name":"Configure in n8n"}}}],"pinData":{},"connections":{"01 Schedule - Check Dropbox":{"main":[[{"node":"02 Dropbox - List Incoming Files","type":"main","index":0}]]},"02 Dropbox - List Incoming Files":{"main":[[{"node":"03 Filter - PDF and DOCX Only","type":"main","index":0}]]},"03 Filter - PDF and DOCX Only":{"main":[[{"node":"05 Loop - Process Files One by One","type":"main","index":0}]]},"04 Dropbox - Download File":{"main":[[{"node":"06 Switch - Detect File Type","type":"main","index":0}]]},"05 Loop - Process Files One by One":{"main":[[],[{"node":"04 Dropbox - Download File","type":"main","index":0}]]},"06 Switch - Detect File Type":{"main":[[{"node":"07A Extract - PDF Text","type":"main","index":0}],[{"node":"05 Loop - Process Files One by One","type":"main","index":0}]]},"07A Extract - PDF Text":{"main":[[{"node":"08A Code - Prepare PDF Text","type":"main","index":0}]]},"08A Code - Prepare PDF Text":{"main":[[{"node":"09A IF - PDF Text Valid","type":"main","index":0}]]},"09A IF - PDF Text Valid":{"main":[[{"node":"10 AI - Extract Job Application Data","type":"main","index":0}],[{"node":"05 Loop - Process Files One by One","type":"main","index":0}]]},"10A OpenAI - Extraction Model":{"ai_languageModel":[[{"node":"10 AI - Extract Job Application Data","type":"ai_languageModel","index":0}]]},"10 AI - Extract Job Application Data":{"main":[[{"node":"11 Code - Prepare Application Record","type":"main","index":0}]]},"11 Code - Prepare Application Record":{"main":[[{"node":"12 IF - Application Data Complete","type":"main","index":0}]]},"12 IF - Application Data Complete":{"main":[[{"node":"13 Sheets - Find Existing Application","type":"main","index":0}],[{"node":"05 Loop - Process Files One by One","type":"main","index":0}]]},"13 Sheets - Find Existing Application":{"main":[[{"node":"14 IF - Already Applied","type":"main","index":0}]]},"14 IF - Already Applied":{"main":[[{"node":"16B Telegram - Already Applied","type":"main","index":0}],[{"node":"15A Sheets - Add New Application","type":"main","index":0}]]},"15A Sheets - Add New Application":{"main":[[{"node":"16A Telegram - New Application Saved","type":"main","index":0}]]},"16A Telegram - New Application Saved":{"main":[[{"node":"05 Loop - Process Files One by One","type":"main","index":0}]]},"16B Telegram - Already Applied":{"main":[[{"node":"05 Loop - Process Files One by One","type":"main","index":0}]]}},"active":false,"settings":{"executionOrder":"v1","binaryMode":"separate"},"meta":{"templateCredsSetupCompleted":false},"nodeGroups":[],"tags":[]}
+{
+  "name": "AI Job Application Tracker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        4384,
+        1488
+      ],
+      "id": "0063b724-c189-4d79-9d57-9fcb478a4710",
+      "name": "01 Schedule - Check Dropbox"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "resource": "folder",
+        "operation": "list",
+        "path": "/YOUR_DROPBOX_FOLDER/Job Applications/Incoming/",
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        4592,
+        1488
+      ],
+      "id": "3a4a3b19-a09b-4a23-af7d-6cdc3cf3ca8a",
+      "name": "02 Dropbox - List Incoming Files"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3c181f45-3ebd-4e7d-abcf-8319f4c0b4b4",
+              "leftValue": "={{ /\\.(pdf|docx)$/i.test($json.name || '') }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "ignoreCase": true
+        }
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        4800,
+        1488
+      ],
+      "id": "5f1931e3-1e15-4387-a120-6610555b22ea",
+      "name": "03 Filter - PDF and DOCX Only"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "download",
+        "path": "={{ $json.pathLower }}"
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        5056,
+        1488
+      ],
+      "id": "d6571773-801e-4c83-98ab-54cb0e563954",
+      "name": "04 Dropbox - Download File"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        5264,
+        1488
+      ],
+      "id": "f67a80e0-24a1-4ca1-b492-12e1a25bc79a",
+      "name": "05 Loop - Process Files One by One"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "37aab90e-696a-4f0f-9e54-bc5b1268e22b",
+                    "leftValue": "={{ $binary.data.fileExtension.toLowerCase() }}",
+                    "rightValue": "pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PDF"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "7bbd4724-a828-4741-9a1c-a9bb196b3a70",
+                    "leftValue": "={{ $binary.data.fileExtension.toLowerCase() }}",
+                    "rightValue": "docx",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "DOCX"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        4784,
+        1792
+      ],
+      "id": "f9c8db3f-753a-40ac-9344-c16a42104d7f",
+      "name": "06 Switch - Detect File Type"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        4416,
+        2000
+      ],
+      "id": "72f58d8c-f60f-4199-a238-54b5572942b7",
+      "name": "07A Extract - PDF Text"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = String($json.text || '')\n  .replace(/\\u0000/g, '')\n  .replace(/\\r\\n/g, '\\n')\n  .replace(/[ \\t]+/g, ' ')\n  .replace(/\\n{3,}/g, '\\n\\n')\n  .trim();\n\nconst file = $('05 Loop - Process Files One by One').item.json;\n\nreturn [\n  {\n    json: {\n      documentText: text,\n      textLength: text.length,\n      extractionSuccessful: text.length >= 100,\n\n      sourceFileName: file.name || '',\n      dropboxFileId: file.id || '',\n      dropboxRevision: file.rev || '',\n      dropboxPath: file.pathDisplay || file.pathLower || '',\n      lastModifiedServer: file.lastModifiedServer || '',\n      fileType: 'PDF',\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4624,
+        2000
+      ],
+      "id": "2322c241-f8ef-4e3b-9f38-1807d7645f63",
+      "name": "08A Code - Prepare PDF Text"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "1ca8fae1-5ba3-4e1e-a853-9914f5c0a0f6",
+              "leftValue": "={{ $json.extractionSuccessful }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4848,
+        2000
+      ],
+      "id": "a4271902-d315-4a24-89c3-b30e1c96b9c3",
+      "name": "09A IF - PDF Text Valid"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.documentText }}",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "company",
+              "description": "The company or employer to which the candidate is applying. Do not return the candidate's current or previous employer. Return an empty string if the company cannot be identified."
+            },
+            {
+              "name": "position",
+              "description": "The exact job title or position for which the candidate is applying. Return an empty string if it cannot be identified."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        5120,
+        1984
+      ],
+      "id": "529824cc-aace-4d93-b88b-44b7ad9fd063",
+      "name": "10 AI - Extract Job Application Data"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        5056,
+        2192
+      ],
+      "id": "dc164c1b-e6c5-4375-836d-39f54896a7da",
+      "name": "10A OpenAI - Extraction Model"
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResult =\n  $json.output && typeof $json.output === 'object'\n    ? $json.output\n    : $json;\n\nconst source = $('08A Code - Prepare PDF Text').item.json;\n\nconst clean = (value) =>\n  String(value ?? '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\nconst normalizeKey = (value) =>\n  clean(value)\n    .normalize('NFKD')\n    .replace(/[\\u0300-\\u036f]/g, '')\n    .toLowerCase()\n    .replace(/\\b(gmbh|ag|ug|se|kg|mbh|ltd|limited|inc)\\b/g, '')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-+|-+$/g, '');\n\nconst company = clean(aiResult.company);\nconst position = clean(aiResult.position);\n\nreturn [\n  {\n    json: {\n      applicationKey: `${normalizeKey(company)}__${normalizeKey(position)}`,\n      company,\n      position,\n\n      sourceFileName: source.sourceFileName || '',\n      dropboxFileId: source.dropboxFileId || '',\n      dropboxRevision: source.dropboxRevision || '',\n      dropboxVersionKey: `${source.dropboxFileId || ''}:${source.dropboxRevision || ''}`,\n      dropboxPath: source.dropboxPath || '',\n      fileType: source.fileType || 'PDF',\n      processedAt: new Date().toISOString(),\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5472,
+        1984
+      ],
+      "id": "875d3892-3a38-4acf-b184-9f148705d8f5",
+      "name": "11 Code - Prepare Application Record"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0188f0da-94e6-4e5b-a9a6-6c85a4a3a74c",
+              "leftValue": "={{ Boolean($json.company?.trim()) && Boolean($json.position?.trim()) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5680,
+        1984
+      ],
+      "id": "4530ec23-6604-4bcb-813f-13143f1abdb1",
+      "name": "12 IF - Application Data Complete"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Applications",
+          "mode": "name"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Company",
+              "lookupValue": "={{ $json.company }}"
+            },
+            {
+              "lookupColumn": "Position",
+              "lookupValue": "={{ $json.position }}"
+            }
+          ]
+        },
+        "options": {
+          "returnFirstMatch": true
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5440,
+        1760
+      ],
+      "id": "4af01bfc-574e-4d44-9877-859126e4712b",
+      "name": "13 Sheets - Find Existing Application",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "fc404265-df36-4b22-a3a9-f756f65d6c2b",
+              "leftValue": "={{ Boolean($json.Company) && Boolean($json.Position) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5696,
+        1760
+      ],
+      "id": "c59769f1-d0ec-441a-9e36-7fe4833a0375",
+      "name": "14 IF - Already Applied"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_GOOGLE_SHEET_ID",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Applications",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company": "={{ $('11 Code - Prepare Application Record').item.json.company }}",
+            "Position": "={{ $('11 Code - Prepare Application Record').item.json.position }}",
+            "ApplicationKey": "={{ $('11 Code - Prepare Application Record').item.json.applicationKey }}",
+            "AppliedDate": "={{ $('11 Code - Prepare Application Record').item.json.processedAt.split('T')[0] }}",
+            "ApplicationStatus": "Applied",
+            "SourceFileName": "={{ $('11 Code - Prepare Application Record').item.json.sourceFileName }}",
+            "DropboxFileId": "={{ $('11 Code - Prepare Application Record').item.json.dropboxFileId }}",
+            "DropboxPath": "={{ $('11 Code - Prepare Application Record').item.json.dropboxPath }}",
+            "FileType": "={{ $('11 Code - Prepare Application Record').item.json.fileType }}",
+            "ProcessedAt": "={{ $('11 Code - Prepare Application Record').item.json.processedAt }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "ApplicationKey",
+              "displayName": "ApplicationKey",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "AppliedDate",
+              "displayName": "AppliedDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Position",
+              "displayName": "Position",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "JobURL",
+              "displayName": "JobURL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ApplicationStatus",
+              "displayName": "ApplicationStatus",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "SourceFileName",
+              "displayName": "SourceFileName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DropboxFileId",
+              "displayName": "DropboxFileId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DropboxPath",
+              "displayName": "DropboxPath",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "FileType",
+              "displayName": "FileType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ProcessedAt",
+              "displayName": "ProcessedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        5968,
+        1776
+      ],
+      "id": "f601ccec-f8de-47af-a287-a450d7b912a4",
+      "name": "15A Sheets - Add New Application"
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_WITH_TELEGRAM_CHAT_ID",
+        "text": "=✅ New application saved  🏢 Company: {{ $('11 Code - Prepare Application Record').item.json.company }} 💼 Position: {{ $('11 Code - Prepare Application Record').item.json.position }} 📅 Applied date: {{ $('11 Code - Prepare Application Record').item.json.processedAt.split('T')[0] }} 📄 File: {{ $('11 Code - Prepare Application Record').item.json.sourceFileName }}  The application was added to Google Sheets.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6208,
+        1776
+      ],
+      "id": "6b58c901-8a32-4aba-b54c-4d097e8c30b6",
+      "name": "16A Telegram - New Application Saved"
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_WITH_TELEGRAM_CHAT_ID",
+        "text": "=⚠️ Application already exists  🏢 Company: {{ $('11 Code - Prepare Application Record').item.json.company }} 💼 Position: {{ $('11 Code - Prepare Application Record').item.json.position }} 📄 Current file: {{ $('11 Code - Prepare Application Record').item.json.sourceFileName }}  This company and position already exist in Google Sheets. No new row was added.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6192,
+        1360
+      ],
+      "id": "9f3a513b-cfce-4ad8-aec3-a2eef58a8f0f",
+      "name": "16B Telegram - Already Applied"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "move",
+        "path": "={{ $('11 Code - Prepare Application Record').item.json.dropboxPath }}",
+        "toPath": "={{ '/YOUR_DROPBOX_FOLDER/Job Applications/Processed/' + $('11 Code - Prepare Application Record').item.json.sourceFileName }}"
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        6496,
+        1776
+      ],
+      "id": "29cb5af3-a0e1-4786-86ea-58e8b8f7976e",
+      "name": "17A Dropbox - Move New File to Processed"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "move",
+        "path": "={{ $('11 Code - Prepare Application Record').item.json.dropboxPath }}",
+        "toPath": "={{ '/YOUR_DROPBOX_FOLDER/Job Applications/Processed/' + $('11 Code - Prepare Application Record').item.json.sourceFileName }}"
+      },
+      "type": "n8n-nodes-base.dropbox",
+      "typeVersion": 1,
+      "position": [
+        6496,
+        1520
+      ],
+      "id": "f2bfc3dc-a24c-4600-936b-4b8af98c8b60",
+      "name": "17B Dropbox - Move Duplicate File to Processed"
+    }
+  ],
+  "connections": {
+    "01 Schedule - Check Dropbox": {
+      "main": [
+        [
+          {
+            "node": "02 Dropbox - List Incoming Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 Dropbox - List Incoming Files": {
+      "main": [
+        [
+          {
+            "node": "03 Filter - PDF and DOCX Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 Filter - PDF and DOCX Only": {
+      "main": [
+        [
+          {
+            "node": "05 Loop - Process Files One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 Dropbox - Download File": {
+      "main": [
+        [
+          {
+            "node": "06 Switch - Detect File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 Loop - Process Files One by One": {
+      "main": [
+        [],
+        [
+          {
+            "node": "04 Dropbox - Download File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 Switch - Detect File Type": {
+      "main": [
+        [
+          {
+            "node": "07A Extract - PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05 Loop - Process Files One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07A Extract - PDF Text": {
+      "main": [
+        [
+          {
+            "node": "08A Code - Prepare PDF Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08A Code - Prepare PDF Text": {
+      "main": [
+        [
+          {
+            "node": "09A IF - PDF Text Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09A IF - PDF Text Valid": {
+      "main": [
+        [
+          {
+            "node": "10 AI - Extract Job Application Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05 Loop - Process Files One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10A OpenAI - Extraction Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "10 AI - Extract Job Application Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10 AI - Extract Job Application Data": {
+      "main": [
+        [
+          {
+            "node": "11 Code - Prepare Application Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11 Code - Prepare Application Record": {
+      "main": [
+        [
+          {
+            "node": "12 IF - Application Data Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "12 IF - Application Data Complete": {
+      "main": [
+        [
+          {
+            "node": "13 Sheets - Find Existing Application",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05 Loop - Process Files One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "13 Sheets - Find Existing Application": {
+      "main": [
+        [
+          {
+            "node": "14 IF - Already Applied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "14 IF - Already Applied": {
+      "main": [
+        [
+          {
+            "node": "16B Telegram - Already Applied",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "15A Sheets - Add New Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "15A Sheets - Add New Application": {
+      "main": [
+        [
+          {
+            "node": "16A Telegram - New Application Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16A Telegram - New Application Saved": {
+      "main": [
+        [
+          {
+            "node": "17A Dropbox - Move New File to Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16B Telegram - Already Applied": {
+      "main": [
+        [
+          {
+            "node": "17B Dropbox - Move Duplicate File to Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17A Dropbox - Move New File to Processed": {
+      "main": [
+        [
+          {
+            "node": "05 Loop - Process Files One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "17B Dropbox - Move Duplicate File to Processed": {
+      "main": [
+        [
+          {
+            "node": "05 Loop - Process Files One by One",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "nodeGroups": []
+}
